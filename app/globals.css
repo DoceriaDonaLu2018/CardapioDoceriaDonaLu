@@ -82,12 +82,19 @@
     visibility: visible;
   }
 
+  /* Largura impressa levemente menor que os 80mm do papel, com ~2mm de
+     folga em cada lado (≈ uma letra) para o texto não ser cortado. */
   .kitchen-receipt {
     position: absolute;
     left: 0;
     top: 0;
     width: 80mm;
     opacity: 1;
+  }
+
+  .kitchen-receipt > * {
+    width: 76mm !important;
+    margin: 0 auto !important;
   }
 
   .no-print {
