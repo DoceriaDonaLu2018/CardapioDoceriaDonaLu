@@ -27,9 +27,11 @@ export async function GET(): Promise<NextResponse> {
     const serialized = orders.map((order) => ({
       id: order.id,
       customerName: order.customerName,
+      customerPhone: order.customerPhone,
       waiterName: order.waiterName,
       createdAt: order.createdAt.toISOString(),
       totalAmount: order.totalAmount,
+      advancePayment: order.advancePayment,
       items: order.items.map((item) => ({
         quantity: item.quantity,
         priceAtTime: item.priceAtTime,

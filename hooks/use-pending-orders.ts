@@ -5,9 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 export type PendingOrder = {
   id: string;
   customerName: string;
+  customerPhone: string | null;
   waiterName: string | null;
   createdAt: string;
   totalAmount: number;
+  advancePayment: number;
   items: {
     quantity: number;
     priceAtTime: number;

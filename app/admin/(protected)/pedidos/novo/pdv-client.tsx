@@ -4,8 +4,10 @@ import { useMemo, useState, useTransition } from "react";
 import Image from "next/image";
 import {
   CheckCircle2,
+  ChevronDown,
   Loader2,
   Minus,
+  PackagePlus,
   Plus,
   Search,
   ShoppingCart,
@@ -13,11 +15,18 @@ import {
 } from "lucide-react";
 
 import { createOrder } from "@/app/admin/pedidos/actions";
-import { formatPrice } from "@/lib/format";
+import { formatPhone, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+/** Converte o texto digitado no campo de sinal em número (aceita vírgula). */
+function parseCurrencyInput(value: string): number {
+  const normalized = value.replace(/\./g, "").replace(",", ".").trim();
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
 
 export type PdvProduct = {
   id: string;
@@ -42,6 +51,9 @@ export function PdvClient({ products }: PdvClientProps) {
   const [search, setSearch] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [waiterName, setWaiterName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [advanceInput, setAdvanceInput] = useState("");
+  const [showExtraInfo, setShowExtraInfo] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +76,14 @@ export function PdvClient({ products }: PdvClientProps) {
     () => cart.reduce((sum, line) => sum + line.quantity, 0),
     [cart]
   );
+
+  const advancePayment = useMemo(
+    () => parseCurrencyInput(advanceInput),
+    [advanceInput]
+  );
+
+  const advanceExceedsTotal = advancePayment > total + 0.001;
+  const remaining = Math.max(0, total - advancePayment);
 
   function addToCart(product: PdvProduct) {
     setSuccessMessage(null);
@@ -109,10 +129,17 @@ export function PdvClient({ products }: PdvClientProps) {
     setError(null);
     setSuccessMessage(null);
 
+    if (advanceExceedsTotal) {
+      setError("O sinal não pode ser maior que o total do pedido.");
+      return;
+    }
+
     startTransition(async () => {
       const result = await createOrder({
         customerName,
+        customerPhone: customerPhone || undefined,
         waiterName: waiterName || undefined,
+        advancePayment,
         items: cart.map((line) => ({
           productId: line.productId,
           quantity: line.quantity,
@@ -130,6 +157,9 @@ export function PdvClient({ products }: PdvClientProps) {
       setCart([]);
       setCustomerName("");
       setWaiterName("");
+      setCustomerPhone("");
+      setAdvanceInput("");
+      setShowExtraInfo(false);
     });
   }
 
@@ -224,6 +254,71 @@ export function PdvClient({ products }: PdvClientProps) {
             />
           </div>
 
+          {/* Seção expansível para encomendas (WhatsApp + sinal). */}
+          <div className="rounded-lg border border-stone-200">
+            <button
+              type="button"
+              onClick={() => setShowExtraInfo((open) => !open)}
+              aria-expanded={showExtraInfo}
+              aria-controls="extra-info-panel"
+              className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50"
+            >
+              <span className="flex items-center gap-2">
+                <PackagePlus className="h-4 w-4 text-coffee-600" />
+                Informações Adicionais / Encomenda
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 shrink-0 text-stone-400 transition-transform",
+                  showExtraInfo && "rotate-180"
+                )}
+              />
+            </button>
+
+            {showExtraInfo && (
+              <div
+                id="extra-info-panel"
+                className="space-y-3 border-t border-stone-100 p-3"
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="customerPhone">WhatsApp (opcional)</Label>
+                  <Input
+                    id="customerPhone"
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="(11) 99999-9999"
+                    value={customerPhone}
+                    onChange={(event) =>
+                      setCustomerPhone(formatPhone(event.target.value))
+                    }
+                    disabled={isPending}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="advancePayment">
+                    Valor pago como sinal (R$)
+                  </Label>
+                  <Input
+                    id="advancePayment"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={advanceInput}
+                    onChange={(event) => setAdvanceInput(event.target.value)}
+                    disabled={isPending}
+                    aria-invalid={advanceExceedsTotal}
+                  />
+                  {advanceExceedsTotal && (
+                    <p className="text-xs text-red-600">
+                      O sinal não pode ser maior que o total do pedido.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {successMessage && (
             <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
@@ -294,17 +389,49 @@ export function PdvClient({ products }: PdvClientProps) {
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t border-stone-200 pt-3">
-            <span className="text-sm font-medium text-stone-600">Total</span>
-            <span className="text-xl font-bold text-coffee-700">
-              {formatPrice(total)}
-            </span>
+          <div className="space-y-1.5 border-t border-stone-200 pt-3">
+            {advancePayment > 0 ? (
+              <>
+                <div className="flex items-center justify-between text-sm text-stone-600">
+                  <span>Valor Total</span>
+                  <span className="font-medium">{formatPrice(total)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm text-emerald-700">
+                  <span>Sinal</span>
+                  <span className="font-medium">
+                    - {formatPrice(advancePayment)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t border-stone-100 pt-1.5">
+                  <span className="text-sm font-medium text-stone-600">
+                    Restante a Pagar
+                  </span>
+                  <span className="text-xl font-bold text-coffee-700">
+                    {formatPrice(remaining)}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-stone-600">
+                  Total
+                </span>
+                <span className="text-xl font-bold text-coffee-700">
+                  {formatPrice(total)}
+                </span>
+              </div>
+            )}
           </div>
 
           <Button
             type="button"
             onClick={handleFinalize}
-            disabled={isPending || cart.length === 0 || !customerName.trim()}
+            disabled={
+              isPending ||
+              cart.length === 0 ||
+              !customerName.trim() ||
+              advanceExceedsTotal
+            }
             className={cn(
               "w-full bg-coffee-600 text-white hover:bg-coffee-700",
               "disabled:opacity-50"

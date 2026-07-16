@@ -19,9 +19,18 @@ export type CreateOrderItemInput = {
 
 export type CreateOrderInput = {
   customerName: string;
+  customerPhone?: string;
   waiterName?: string;
+  advancePayment?: number;
   items: CreateOrderItemInput[];
 };
+
+/** Mantém apenas os dígitos do telefone (ou null quando vazio). */
+function normalizePhone(value?: string): string | null {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, "");
+  return digits.length > 0 ? digits : null;
+}
 
 function mergeItems(items: CreateOrderItemInput[]): CreateOrderItemInput[] {
   const merged = new Map<string, number>();
@@ -58,6 +67,7 @@ export async function createOrder(
   }
 
   const waiterName = input.waiterName?.trim() || null;
+  const customerPhone = normalizePhone(input.customerPhone);
 
   const mergedItems = mergeItems(input.items);
   if (mergedItems.length === 0) {
@@ -97,13 +107,26 @@ export async function createOrder(
     0
   );
 
+  // Sinal: não pode ser negativo nem exceder o total do pedido.
+  const rawAdvance = Number(input.advancePayment ?? 0);
+  if (!Number.isFinite(rawAdvance) || rawAdvance < 0) {
+    return { error: "O valor do sinal é inválido." };
+  }
+  // Arredonda para centavos e compara com tolerância para evitar ruído de float.
+  const advancePayment = Math.round(rawAdvance * 100) / 100;
+  if (advancePayment - totalAmount > 0.001) {
+    return { error: "O sinal não pode ser maior que o total do pedido." };
+  }
+
   try {
     const order = await prisma.order.create({
       data: {
         customerName: name,
+        customerPhone,
         waiterName,
         status: "PENDING",
         totalAmount,
+        advancePayment,
         items: { create: orderItems },
       },
     });

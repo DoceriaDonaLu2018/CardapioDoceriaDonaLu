@@ -69,13 +69,15 @@ model RecipeItem {
 }
 
 model Order {
-  id           String      @id @default(cuid())
-  customerName String
-  waiterName   String?
-  status       String      @default("PENDING") // PENDING | COMPLETED
-  totalAmount  Float
-  items        OrderItem[]
-  createdAt    DateTime    @default(now())
+  id             String      @id @default(cuid())
+  customerName   String
+  customerPhone  String? // WhatsApp da encomenda (opcional)
+  waiterName     String?
+  status         String      @default("PENDING") // PENDING | COMPLETED
+  totalAmount    Float
+  advancePayment Float       @default(0) // sinal pago antecipadamente
+  items          OrderItem[]
+  createdAt      DateTime    @default(now())
 
   @@index([createdAt])
   @@index([status])
