@@ -33,10 +33,10 @@ export default async function ProdutosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-3xl font-bold text-zinc-800">
+          <h1 className="font-serif text-3xl font-bold text-stone-800">
             Produtos
           </h1>
-          <p className="mt-1 text-zinc-500">
+          <p className="mt-1 text-stone-500">
             Gerencie os itens do cardápio.
           </p>
         </div>
@@ -45,20 +45,20 @@ export default async function ProdutosPage() {
           <ProductFormSheet
             categories={categories}
             trigger={
-              <Button className="bg-pink-600 text-white hover:bg-pink-700">
+              <Button className="bg-coffee-600 text-white hover:bg-coffee-700">
                 <Plus className="h-4 w-4" />
                 Novo Produto
               </Button>
             }
           />
         ) : (
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-stone-500">
             Crie uma categoria antes de adicionar produtos.
           </p>
         )}
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-stone-200 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -75,7 +75,7 @@ export default async function ProdutosPage() {
               <TableRow>
                 <TableCell
                   colSpan={6}
-                  className="py-10 text-center text-zinc-500"
+                  className="py-10 text-center text-stone-500"
                 >
                   Nenhum produto cadastrado.
                 </TableCell>
@@ -84,7 +84,7 @@ export default async function ProdutosPage() {
               products.map((product) => (
                 <TableRow key={product.id}>
                   <TableCell>
-                    <div className="relative h-12 w-16 overflow-hidden rounded-md bg-pink-50">
+                    <div className="relative h-12 w-16 overflow-hidden rounded-md bg-stone-100">
                       <Image
                         src={product.imageUrl}
                         alt={product.title}
@@ -94,13 +94,13 @@ export default async function ProdutosPage() {
                       />
                     </div>
                   </TableCell>
-                  <TableCell className="font-medium text-zinc-800">
+                  <TableCell className="font-medium text-stone-800">
                     {product.title}
                   </TableCell>
-                  <TableCell className="text-zinc-600">
+                  <TableCell className="text-stone-600">
                     {product.category.name}
                   </TableCell>
-                  <TableCell className="font-semibold text-pink-700">
+                  <TableCell className="font-semibold text-coffee-700">
                     {formatPrice(product.price)}
                   </TableCell>
                   <TableCell className="text-center">
@@ -109,7 +109,7 @@ export default async function ProdutosPage() {
                         Disponível
                       </span>
                     ) : (
-                      <span className="inline-flex items-center rounded-full bg-pink-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600">
+                      <span className="inline-flex items-center rounded-full bg-stone-200 px-2.5 py-0.5 text-xs font-medium text-stone-600">
                         Indisponível
                       </span>
                     )}

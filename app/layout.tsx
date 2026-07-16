@@ -18,7 +18,7 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "Doceria Dona Lu — Cardápio Digital",
   description:
-    "Doceria artesanal. Bolos, tortas, doces, sobremesas e muito mais, feitos com carinho.",
+    "Doceria artesanal. Bolos, tortas, doces finos, sobremesas e muito mais.",
 };
 
 export default function RootLayout({

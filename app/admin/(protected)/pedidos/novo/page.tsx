@@ -21,10 +21,10 @@ export default async function NovoPedidoPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-serif text-3xl font-bold text-zinc-800">
+        <h1 className="font-serif text-3xl font-bold text-stone-800">
           Novo Pedido
         </h1>
-        <p className="mt-1 text-zinc-500">
+        <p className="mt-1 text-stone-500">
           Monte a comanda e finalize o pedido do cliente.
         </p>
       </div>

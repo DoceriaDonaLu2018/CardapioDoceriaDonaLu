@@ -17,8 +17,8 @@ export function OrderPeriodFilter({ current }: OrderPeriodFilterProps) {
           className={cn(
             "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
             current === value
-              ? "border-pink-600 bg-pink-600 text-white"
-              : "border-zinc-200 bg-white text-zinc-600 hover:border-pink-300 hover:text-pink-700"
+              ? "border-coffee-600 bg-coffee-600 text-white"
+              : "border-stone-200 bg-white text-stone-600 hover:border-coffee-300 hover:text-coffee-700"
           )}
         >
           {label}

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 // Em desenvolvimento, pré-preenche com as credenciais padrão do .env
 // para facilitar o acesso ao painel. Não aparece em produção.
 const isDev = process.env.NODE_ENV !== "production";
-const devEmail = isDev ? "admin@deminascafe.com" : undefined;
+const devEmail = isDev ? "admin@doceriadonalu.com" : undefined;
 const devPassword = isDev ? "admin123" : undefined;
 
 export function LoginForm() {
@@ -28,7 +28,7 @@ export function LoginForm() {
           id="email"
           name="email"
           type="email"
-          placeholder="admin@deminascafe.com"
+          placeholder="admin@doceriadonalu.com"
           autoComplete="email"
           defaultValue={devEmail}
           required
@@ -49,9 +49,9 @@ export function LoginForm() {
       </div>
 
       {isDev && (
-        <p className="rounded-md bg-pink-50 px-3 py-2 text-xs text-zinc-500">
-          <strong className="font-medium text-zinc-600">Dev:</strong> use{" "}
-          <code>admin@deminascafe.com</code> / <code>admin123</code>.
+        <p className="rounded-md bg-stone-100 px-3 py-2 text-xs text-stone-500">
+          <strong className="font-medium text-stone-600">Dev:</strong> use{" "}
+          <code>admin@doceriadonalu.com</code> / <code>admin123</code>.
         </p>
       )}
 
@@ -65,7 +65,7 @@ export function LoginForm() {
       <Button
         type="submit"
         disabled={isPending}
-        className="w-full bg-pink-600 text-white hover:bg-pink-700"
+        className="w-full bg-coffee-600 text-white hover:bg-coffee-700"
       >
         {isPending ? (
           <>

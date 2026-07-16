@@ -141,3 +141,66 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# ------------------------------------------------------------------
+# Específico deste projeto (Next.js + Windows/OneDrive + editores)
+# ------------------------------------------------------------------
+
+# Next.js
+/.next/
+/out/
+/build
+next-env.d.ts
+.turbo
+
+# Certificados locais (HTTPS em dev)
+*.pem
+
+# Prisma / SQLite — arquivos de banco local (não versionar)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+prisma/dev.db
+prisma/*.db
+
+# Vercel (deploy)
+.vercel
+
+# TypeScript (arquivos incrementais gerados)
+*.tsbuildinfo
+next-env.d.ts
+
+# Arquivos de sistema — Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+desktop.ini
+$RECYCLE.BIN/
+*.stackdump
+*.lnk
+
+# Arquivos temporários do OneDrive
+*.tmp
+~$*
+
+# Arquivos de sistema — macOS/Linux (caso alguém clone em outra plataforma)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+*~
+
+# Editores / IDEs
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

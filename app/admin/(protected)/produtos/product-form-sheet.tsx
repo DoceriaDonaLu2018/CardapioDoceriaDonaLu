@@ -144,10 +144,10 @@ export function ProductFormSheet({
             <ImageUpload name="imageUrl" defaultValue={product?.imageUrl} />
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3">
+          <div className="flex items-center justify-between rounded-lg border border-stone-200 p-3">
             <div>
               <Label htmlFor="isAvailable">Disponível</Label>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-stone-500">
                 Produtos indisponíveis não aparecem no cardápio.
               </p>
             </div>
@@ -166,7 +166,7 @@ export function ProductFormSheet({
             <Button
               type="submit"
               disabled={isPending}
-              className="w-full bg-pink-600 text-white hover:bg-pink-700"
+              className="w-full bg-coffee-600 text-white hover:bg-coffee-700"
             >
               {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {isEditing ? "Salvar alterações" : "Criar produto"}

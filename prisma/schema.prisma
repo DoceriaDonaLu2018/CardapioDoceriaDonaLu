@@ -24,20 +24,48 @@ model Category {
 }
 
 model Product {
-  id          String      @id @default(cuid())
-  title       String
-  description String
-  imageUrl    String
-  price       Float
-  costPrice   Float       @default(0)
-  isAvailable Boolean     @default(true)
-  categoryId  String
-  category    Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  orderItems  OrderItem[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id              String       @id @default(cuid())
+  title           String
+  description     String
+  imageUrl        String
+  price           Float
+  costPrice       Float        @default(0)
+  isAvailable     Boolean      @default(true)
+  pricingStrategy String? // markupPercent | marginPercent | fixedProfit | finalPrice
+  pricingValue    Float?
+  categoryId      String
+  category        Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  orderItems      OrderItem[]
+  recipeItems     RecipeItem[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   @@index([categoryId])
+}
+
+model Ingredient {
+  id               String       @id @default(cuid())
+  name             String       @unique
+  purchasePrice    Float // custo da embalagem fechada
+  purchaseQuantity Float // quantidade contida na embalagem
+  unit             String // kg | g | mg | L | ml | un
+  recipeItems      RecipeItem[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model RecipeItem {
+  id           String     @id @default(cuid())
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  quantityUsed Float
+  createdAt    DateTime   @default(now())
+
+  @@unique([productId, ingredientId])
+  @@index([productId])
+  @@index([ingredientId])
 }
 
 model Order {

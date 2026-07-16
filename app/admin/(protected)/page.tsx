@@ -50,10 +50,10 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-serif text-3xl font-bold text-zinc-800">
+        <h1 className="font-serif text-3xl font-bold text-stone-800">
           Dashboard
         </h1>
-        <p className="mt-1 text-zinc-500">
+        <p className="mt-1 text-stone-500">
           Visão financeira das vendas concluídas (faturamento e lucro).
         </p>
       </div>
@@ -65,20 +65,20 @@ export default async function DashboardPage() {
           return (
             <Card key={card.label}>
               <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-zinc-500">
+                <CardTitle className="text-sm font-medium text-stone-500">
                   {card.label}
                 </CardTitle>
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-pink-100 text-pink-700">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-coffee-100 text-coffee-700">
                   <Icon className="h-4 w-4" />
                 </span>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold tracking-tight text-zinc-800 sm:text-3xl">
+                <p className="text-2xl font-bold tracking-tight text-stone-800 sm:text-3xl">
                   {card.value}
                 </p>
-                <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500">
+                <p className="mt-1 flex items-center gap-1 text-xs text-stone-500">
                   {card.highlight && (
-                    <TrendingUp className="h-3.5 w-3.5 text-pink-600" />
+                    <TrendingUp className="h-3.5 w-3.5 text-coffee-600" />
                   )}
                   {card.hint}
                 </p>
@@ -92,7 +92,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle className="text-lg text-zinc-800">
+            <CardTitle className="text-lg text-stone-800">
               Top 7 Produtos Mais Vendidos
             </CardTitle>
             <CardDescription>
@@ -106,7 +106,7 @@ export default async function DashboardPage() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-lg text-zinc-800">
+            <CardTitle className="text-lg text-stone-800">
               Evolução Semanal
             </CardTitle>
             <CardDescription>
@@ -117,7 +117,7 @@ export default async function DashboardPage() {
             <WeeklyEvolutionChart data={data.weeklyEvolution} />
 
             <div>
-              <h3 className="mb-3 text-sm font-semibold text-zinc-700">
+              <h3 className="mb-3 text-sm font-semibold text-stone-700">
                 Vendas por categoria (30 dias)
               </h3>
               <CategorySalesList data={data.categorySales} />

@@ -212,7 +212,7 @@ const seedData = [
           "https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80",
       },
       {
-        title: "Caneca Dê Minas",
+        title: "Caneca Dona Lu",
         description: "Caneca de cerâmica exclusiva com a marca da casa.",
         price: 45.0,
         imageUrl:

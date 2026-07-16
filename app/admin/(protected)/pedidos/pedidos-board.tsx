@@ -245,15 +245,15 @@ export function PedidosBoard() {
     return (
       <>
         {Toast}
-        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-zinc-300 bg-white py-16 text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-pink-100 text-pink-700">
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-stone-300 bg-white py-16 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-coffee-100 text-coffee-700">
             <Printer className="h-7 w-7" />
           </span>
           <div>
-            <p className="text-lg font-semibold text-zinc-800">
+            <p className="text-lg font-semibold text-stone-800">
               Recepção de pedidos pausada
             </p>
-            <p className="mx-auto mt-1 max-w-md text-sm text-zinc-500">
+            <p className="mx-auto mt-1 max-w-md text-sm text-stone-500">
               Ative para começar a receber e imprimir os pedidos
               automaticamente. Este clique é necessário para o navegador liberar
               a impressão sem bloqueios.
@@ -263,7 +263,7 @@ export function PedidosBoard() {
             type="button"
             onClick={handleEnable}
             size="lg"
-            className="bg-pink-600 text-base text-white hover:bg-pink-700"
+            className="bg-coffee-600 text-base text-white hover:bg-coffee-700"
           >
             <Play className="h-5 w-5" />
             Iniciar Recepção de Pedidos
@@ -290,7 +290,7 @@ export function PedidosBoard() {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-500">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-500">
         <span className="flex items-center gap-2">
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
@@ -303,7 +303,7 @@ export function PedidosBoard() {
         <button
           type="button"
           onClick={() => setIsAutoPrintEnabled(false)}
-          className="shrink-0 rounded px-2 py-1 font-medium text-zinc-500 hover:bg-pink-50"
+          className="shrink-0 rounded px-2 py-1 font-medium text-stone-500 hover:bg-stone-100"
         >
           Pausar
         </button>
@@ -316,17 +316,17 @@ export function PedidosBoard() {
       )}
 
       {isLoading && orders.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white py-16 text-zinc-500">
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white py-16 text-stone-500">
           <Loader2 className="h-5 w-5 animate-spin" />
           Carregando pedidos...
         </div>
       ) : visibleOrders.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-300 bg-white py-16 text-center">
-          <UtensilsCrossed className="mx-auto h-8 w-8 text-zinc-300" />
-          <p className="mt-3 font-medium text-zinc-600">
+        <div className="rounded-xl border border-dashed border-stone-300 bg-white py-16 text-center">
+          <UtensilsCrossed className="mx-auto h-8 w-8 text-stone-300" />
+          <p className="mt-3 font-medium text-stone-600">
             Nenhum pedido pendente
           </p>
-          <p className="mt-1 text-sm text-zinc-400">
+          <p className="mt-1 text-sm text-stone-400">
             Novos pedidos aparecem aqui automaticamente.
           </p>
         </div>
@@ -342,20 +342,20 @@ export function PedidosBoard() {
             return (
               <div
                 key={order.id}
-                className="flex flex-col rounded-xl border border-zinc-200 bg-white shadow-sm"
+                className="flex flex-col rounded-xl border border-stone-200 bg-white shadow-sm"
               >
-                <div className="flex items-start justify-between gap-2 border-b border-zinc-100 p-4">
+                <div className="flex items-start justify-between gap-2 border-b border-stone-100 p-4">
                   <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 font-semibold text-zinc-800">
-                      <User className="h-4 w-4 text-pink-600" />
+                    <p className="flex items-center gap-1.5 font-semibold text-stone-800">
+                      <User className="h-4 w-4 text-coffee-600" />
                       {order.customerName}
                     </p>
                     {order.waiterName && (
-                      <p className="mt-0.5 text-xs text-zinc-500">
+                      <p className="mt-0.5 text-xs text-stone-500">
                         Garçom/Mesa: {order.waiterName}
                       </p>
                     )}
-                    <p className="mt-0.5 font-mono text-xs text-zinc-400">
+                    <p className="mt-0.5 font-mono text-xs text-stone-400">
                       #{formatOrderId(order.id)}
                     </p>
                   </div>
@@ -364,7 +364,7 @@ export function PedidosBoard() {
                       "flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
                       isLate
                         ? "bg-red-100 text-red-700"
-                        : "bg-pink-50 text-zinc-600"
+                        : "bg-stone-100 text-stone-600"
                     )}
                   >
                     <Clock className="h-3.5 w-3.5" />
@@ -374,8 +374,8 @@ export function PedidosBoard() {
 
                 <ul className="flex-1 space-y-1.5 p-4">
                   {order.items.map((item, index) => (
-                    <li key={index} className="flex gap-2 text-sm text-zinc-700">
-                      <span className="font-bold text-pink-700">
+                    <li key={index} className="flex gap-2 text-sm text-stone-700">
+                      <span className="font-bold text-coffee-700">
                         {item.quantity}x
                       </span>
                       <span>{item.product.title}</span>
@@ -383,15 +383,15 @@ export function PedidosBoard() {
                   ))}
                 </ul>
 
-                <div className="flex items-center justify-between border-t border-zinc-100 p-4">
-                  <span className="text-sm font-semibold text-zinc-700">
+                <div className="flex items-center justify-between border-t border-stone-100 p-4">
+                  <span className="text-sm font-semibold text-stone-700">
                     {formatPrice(order.totalAmount)}
                   </span>
                   <Button
                     type="button"
                     onClick={() => handleComplete(order.id)}
                     disabled={isCompleting}
-                    className="bg-pink-600 text-white hover:bg-pink-700"
+                    className="bg-coffee-600 text-white hover:bg-coffee-700"
                   >
                     {isCompleting ? (
                       <>

@@ -20,7 +20,7 @@ interface TopProductsChartProps {
 export function TopProductsChart({ data }: TopProductsChartProps) {
   if (data.length === 0) {
     return (
-      <p className="flex h-[280px] items-center justify-center text-sm text-zinc-400">
+      <p className="flex h-[280px] items-center justify-center text-sm text-stone-400">
         Sem vendas concluídas neste mês.
       </p>
     );
@@ -57,7 +57,7 @@ export function TopProductsChart({ data }: TopProductsChartProps) {
             tickLine={false}
           />
           <Tooltip
-            cursor={{ fill: "rgba(120, 82, 46, 0.06)" }}
+            cursor={{ fill: "rgba(207, 45, 108, 0.06)" }}
             contentStyle={{
               borderRadius: 8,
               border: "1px solid #e7e5e4",
@@ -71,7 +71,7 @@ export function TopProductsChart({ data }: TopProductsChartProps) {
           />
           <Bar
             dataKey="quantidade"
-            fill="#78522e"
+            fill="#cf2d6c"
             radius={[6, 6, 0, 0]}
             maxBarSize={48}
           />
@@ -90,7 +90,7 @@ export function WeeklyEvolutionChart({ data }: WeeklyEvolutionChartProps) {
 
   if (!hasSales) {
     return (
-      <p className="flex h-[180px] items-center justify-center text-sm text-zinc-400">
+      <p className="flex h-[180px] items-center justify-center text-sm text-stone-400">
         Sem faturamento nos últimos 7 dias.
       </p>
     );
@@ -116,7 +116,7 @@ export function WeeklyEvolutionChart({ data }: WeeklyEvolutionChartProps) {
             }
           />
           <Tooltip
-            cursor={{ fill: "rgba(120, 82, 46, 0.06)" }}
+            cursor={{ fill: "rgba(207, 45, 108, 0.06)" }}
             contentStyle={{
               borderRadius: 8,
               border: "1px solid #e7e5e4",
@@ -129,7 +129,7 @@ export function WeeklyEvolutionChart({ data }: WeeklyEvolutionChartProps) {
           />
           <Bar
             dataKey="revenue"
-            fill="#a67c52"
+            fill="#e14b85"
             radius={[4, 4, 0, 0]}
             maxBarSize={36}
           />
@@ -146,7 +146,7 @@ interface CategorySalesListProps {
 export function CategorySalesList({ data }: CategorySalesListProps) {
   if (data.length === 0) {
     return (
-      <p className="py-6 text-center text-sm text-zinc-400">
+      <p className="py-6 text-center text-sm text-stone-400">
         Sem vendas por categoria no período.
       </p>
     );
@@ -161,16 +161,16 @@ export function CategorySalesList({ data }: CategorySalesListProps) {
         return (
           <li key={item.categoryName}>
             <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-              <span className="truncate font-medium text-zinc-700">
+              <span className="truncate font-medium text-stone-700">
                 {item.categoryName}
               </span>
-              <span className="shrink-0 font-semibold text-pink-700">
+              <span className="shrink-0 font-semibold text-coffee-700">
                 {formatPrice(item.revenue)}
               </span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-pink-50">
+            <div className="h-1.5 overflow-hidden rounded-full bg-stone-100">
               <div
-                className="h-full rounded-full bg-pink-500"
+                className="h-full rounded-full bg-coffee-500"
                 style={{ width: `${width}%` }}
               />
             </div>

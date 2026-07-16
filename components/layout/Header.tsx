@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Cake, Menu } from "lucide-react";
+import { CakeSlice, Menu } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useScrollSpy } from "@/hooks/use-scroll-spy";
@@ -37,7 +37,7 @@ export function Header({ categories }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-zinc-200 bg-white/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80">
+    <header className="sticky top-0 z-50 w-full border-b border-stone-200 bg-white/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80">
       <div className="container relative flex h-16 items-center">
         {/* Lado esquerdo: Hamburger Menu */}
         <Sheet open={open} onOpenChange={setOpen}>
@@ -45,20 +45,20 @@ export function Header({ categories }: HeaderProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="text-zinc-800 hover:bg-pink-50 hover:text-pink-700"
+              className="text-stone-800 hover:bg-coffee-50 hover:text-coffee-700"
               aria-label="Abrir menu de categorias"
             >
               <Menu className="h-6 w-6" />
             </Button>
           </SheetTrigger>
 
-          <SheetContent side="left" className="w-72 bg-pink-50">
+          <SheetContent side="left" className="w-72 bg-stone-50">
             <SheetHeader>
-              <SheetTitle className="flex items-center gap-2 font-serif text-2xl text-pink-800">
-                <Cake className="h-6 w-6 text-pink-600" />
+              <SheetTitle className="flex items-center gap-2 font-serif text-2xl text-coffee-800">
+                <CakeSlice className="h-6 w-6 text-coffee-600" />
                 Doceria Dona Lu
               </SheetTitle>
-              <SheetDescription className="text-zinc-500">
+              <SheetDescription className="text-stone-500">
                 Navegue pelas categorias do cardápio.
               </SheetDescription>
             </SheetHeader>
@@ -75,14 +75,14 @@ export function Header({ categories }: HeaderProps) {
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-4 py-3 text-left text-base font-medium transition-colors",
                       isActive
-                        ? "bg-pink-600 text-white shadow-sm"
-                        : "text-zinc-700 hover:bg-pink-100 hover:text-pink-800"
+                        ? "bg-coffee-600 text-white shadow-sm"
+                        : "text-stone-700 hover:bg-coffee-100 hover:text-coffee-800"
                     )}
                   >
                     <span
                       className={cn(
                         "h-2 w-2 rounded-full transition-colors",
-                        isActive ? "bg-white" : "bg-pink-300"
+                        isActive ? "bg-white" : "bg-coffee-300"
                       )}
                     />
                     {category.label}
@@ -95,8 +95,8 @@ export function Header({ categories }: HeaderProps) {
 
         {/* Centro: Nome da doceria */}
         <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-2">
-          <Cake className="h-6 w-6 text-pink-600" />
-          <span className="font-serif text-xl font-semibold tracking-wide text-zinc-800 sm:text-2xl">
+          <CakeSlice className="h-6 w-6 text-coffee-600" />
+          <span className="font-serif text-xl font-semibold tracking-wide text-stone-800 sm:text-2xl">
             Doceria Dona Lu
           </span>
         </div>

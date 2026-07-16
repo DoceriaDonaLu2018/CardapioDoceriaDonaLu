@@ -91,7 +91,7 @@ export function CategoryFormDialog({
             <Button
               type="submit"
               disabled={isPending}
-              className="bg-pink-600 text-white hover:bg-pink-700"
+              className="bg-coffee-600 text-white hover:bg-coffee-700"
             >
               {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {isEditing ? "Salvar alterações" : "Criar categoria"}

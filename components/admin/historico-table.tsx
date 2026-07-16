@@ -54,7 +54,7 @@ export function HistoricoTable({ orders }: HistoricoTableProps) {
         </p>
       )}
 
-      <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-stone-200 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -71,7 +71,7 @@ export function HistoricoTable({ orders }: HistoricoTableProps) {
               <TableRow>
                 <TableCell
                   colSpan={6}
-                  className="py-10 text-center text-zinc-500"
+                  className="py-10 text-center text-stone-500"
                 >
                   Nenhum pedido encontrado neste período.
                 </TableCell>
@@ -86,19 +86,19 @@ export function HistoricoTable({ orders }: HistoricoTableProps) {
 
                 return (
                   <TableRow key={order.id}>
-                    <TableCell className="font-mono text-xs font-medium text-zinc-500">
+                    <TableCell className="font-mono text-xs font-medium text-stone-500">
                       #{formatOrderId(order.id)}
                     </TableCell>
-                    <TableCell className="font-medium text-zinc-800">
+                    <TableCell className="font-medium text-stone-800">
                       {order.customerName}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-zinc-600">
+                    <TableCell className="whitespace-nowrap text-stone-600">
                       {formatDateTime(createdAt)}
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-sm text-zinc-500">
+                    <TableCell className="max-w-xs truncate text-sm text-stone-500">
                       {formatOrderSummary(order.items)}
                     </TableCell>
-                    <TableCell className="text-right font-semibold text-pink-700">
+                    <TableCell className="text-right font-semibold text-coffee-700">
                       {formatPrice(order.totalAmount)}
                     </TableCell>
                     <TableCell className="text-right">

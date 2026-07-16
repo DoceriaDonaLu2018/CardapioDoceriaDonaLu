@@ -69,10 +69,10 @@ export default async function HistoricoPedidosPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-serif text-3xl font-bold text-zinc-800">
+        <h1 className="font-serif text-3xl font-bold text-stone-800">
           Histórico de Pedidos
         </h1>
-        <p className="mt-1 text-zinc-500">
+        <p className="mt-1 text-stone-500">
           Consulte as comandas finalizadas por período.
         </p>
       </div>

@@ -28,22 +28,22 @@ export default async function Home() {
   }));
 
   return (
-    <div className="flex min-h-screen flex-col bg-pink-50">
+    <div className="flex min-h-screen flex-col bg-stone-50">
       <Header categories={headerCategories} />
 
       <main className="flex-1">
         {/* Hero */}
-        <section className="border-b border-zinc-200 bg-white">
+        <section className="border-b border-stone-200 bg-white">
           <div className="container flex flex-col items-center gap-4 py-16 text-center">
-            <span className="rounded-full bg-pink-100 px-4 py-1 text-sm font-medium text-pink-700">
+            <span className="rounded-full bg-coffee-100 px-4 py-1 text-sm font-medium text-coffee-700">
               Doceria Artesanal
             </span>
-            <h1 className="font-serif text-4xl font-bold text-zinc-800 sm:text-5xl">
+            <h1 className="font-serif text-4xl font-bold text-stone-800 sm:text-5xl">
               Doceria Dona Lu
             </h1>
-            <p className="max-w-xl text-base text-zinc-500">
+            <p className="max-w-xl text-base text-stone-500">
               Doces preparados com carinho. Explore nosso cardápio e descubra
-              bolos, tortas, sobremesas e muito mais.
+              bolos, tortas, doces finos e sobremesas irresistíveis.
             </p>
           </div>
         </section>
@@ -51,7 +51,7 @@ export default async function Home() {
         {/* Seções por categoria */}
         <div className="container py-12">
           {visibleCategories.length === 0 ? (
-            <p className="py-20 text-center text-zinc-500">
+            <p className="py-20 text-center text-stone-500">
               O cardápio está sendo preparado. Volte em breve!
             </p>
           ) : (
@@ -62,10 +62,10 @@ export default async function Home() {
                 className="scroll-mt-20 py-10"
               >
                 <div className="mb-6 flex items-center gap-4">
-                  <h2 className="font-serif text-3xl font-bold text-zinc-800">
+                  <h2 className="font-serif text-3xl font-bold text-stone-800">
                     {category.name}
                   </h2>
-                  <span className="h-px flex-1 bg-pink-100" />
+                  <span className="h-px flex-1 bg-stone-200" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">

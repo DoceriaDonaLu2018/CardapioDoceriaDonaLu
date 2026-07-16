@@ -28,7 +28,7 @@ export function PendingOrdersBadge({ collapsed }: PendingOrdersBadgeProps) {
       {collapsed && (
         <span
           aria-hidden="true"
-          className="absolute right-2 top-1.5 hidden h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-zinc-900 lg:block"
+          className="absolute right-2 top-1.5 hidden h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-stone-900 lg:block"
         />
       )}
     </>

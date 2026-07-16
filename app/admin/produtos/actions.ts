@@ -54,7 +54,7 @@ export async function createProduct(
         description,
         imageUrl:
           imageUrl ||
-          "https://placehold.co/800x450/db2777/ffffff?text=Dona+Lu",
+          "https://placehold.co/800x450/cf2d6c/ffffff?text=Dona+Lu",
         price,
         costPrice,
         isAvailable,
@@ -102,7 +102,7 @@ export async function updateProduct(
         description,
         imageUrl:
           imageUrl ||
-          "https://placehold.co/800x450/db2777/ffffff?text=Dona+Lu",
+          "https://placehold.co/800x450/cf2d6c/ffffff?text=Dona+Lu",
         price,
         costPrice,
         isAvailable,

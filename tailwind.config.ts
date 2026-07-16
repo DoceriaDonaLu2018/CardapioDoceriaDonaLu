@@ -52,6 +52,20 @@ const config: Config = {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        // Paleta "Dona Lu" (rosa/framboesa) para acentos e detalhes.
+        // Mantém o token `coffee` para não quebrar as classes existentes.
+        coffee: {
+          50: "#fdf2f7",
+          100: "#fce7f0",
+          200: "#f9cfe0",
+          300: "#f4a6c6",
+          400: "#ec72a3",
+          500: "#e14b85",
+          600: "#cf2d6c",
+          700: "#ad2159",
+          800: "#8a1c49",
+          900: "#5d1432",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

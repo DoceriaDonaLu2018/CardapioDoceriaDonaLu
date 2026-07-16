@@ -90,7 +90,7 @@ export function ImageUpload({ name, defaultValue = "" }: ImageUploadProps) {
       <input type="hidden" name={name} value={url} />
 
       {url ? (
-        <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-zinc-200 bg-pink-50">
+        <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-stone-200 bg-stone-100">
           <Image
             src={url}
             alt="Prévia da imagem do produto"
@@ -111,7 +111,7 @@ export function ImageUpload({ name, defaultValue = "" }: ImageUploadProps) {
               onClick={openFilePicker}
               disabled={isUploading}
               aria-label="Trocar imagem"
-              className="rounded-md bg-white/90 p-1.5 text-zinc-700 shadow-sm transition-colors hover:bg-white"
+              className="rounded-md bg-white/90 p-1.5 text-stone-700 shadow-sm transition-colors hover:bg-white"
             >
               <RefreshCw className="h-4 w-4" />
             </button>
@@ -143,22 +143,22 @@ export function ImageUpload({ name, defaultValue = "" }: ImageUploadProps) {
           className={cn(
             "flex aspect-video w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 text-center transition-colors",
             isDragging
-              ? "border-pink-500 bg-pink-50"
-              : "border-zinc-300 bg-pink-50 hover:border-pink-400 hover:bg-pink-50/50"
+              ? "border-coffee-500 bg-coffee-50"
+              : "border-stone-300 bg-stone-50 hover:border-coffee-400 hover:bg-coffee-50/50"
           )}
         >
           {isUploading ? (
             <>
-              <Loader2 className="h-7 w-7 animate-spin text-pink-600" />
-              <p className="text-sm text-zinc-500">Enviando imagem...</p>
+              <Loader2 className="h-7 w-7 animate-spin text-coffee-600" />
+              <p className="text-sm text-stone-500">Enviando imagem...</p>
             </>
           ) : (
             <>
-              <ImagePlus className="h-7 w-7 text-pink-500" />
-              <p className="text-sm font-medium text-zinc-700">
+              <ImagePlus className="h-7 w-7 text-coffee-500" />
+              <p className="text-sm font-medium text-stone-700">
                 Clique para selecionar ou arraste uma imagem
               </p>
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs text-stone-400">
                 JPG, PNG, WEBP ou GIF · até 4 MB
               </p>
             </>

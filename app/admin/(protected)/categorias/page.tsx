@@ -26,17 +26,17 @@ export default async function CategoriasPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-3xl font-bold text-zinc-800">
+          <h1 className="font-serif text-3xl font-bold text-stone-800">
             Categorias
           </h1>
-          <p className="mt-1 text-zinc-500">
+          <p className="mt-1 text-stone-500">
             Organize as seções do cardápio.
           </p>
         </div>
 
         <CategoryFormDialog
           trigger={
-            <Button className="bg-pink-600 text-white hover:bg-pink-700">
+            <Button className="bg-coffee-600 text-white hover:bg-coffee-700">
               <Plus className="h-4 w-4" />
               Nova Categoria
             </Button>
@@ -44,7 +44,7 @@ export default async function CategoriasPage() {
         />
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-stone-200 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -60,7 +60,7 @@ export default async function CategoriasPage() {
               <TableRow>
                 <TableCell
                   colSpan={5}
-                  className="py-10 text-center text-zinc-500"
+                  className="py-10 text-center text-stone-500"
                 >
                   Nenhuma categoria cadastrada.
                 </TableCell>
@@ -68,18 +68,18 @@ export default async function CategoriasPage() {
             ) : (
               categories.map((category) => (
                 <TableRow key={category.id}>
-                  <TableCell className="font-medium text-zinc-500">
+                  <TableCell className="font-medium text-stone-500">
                     {category.order}
                   </TableCell>
-                  <TableCell className="font-medium text-zinc-800">
+                  <TableCell className="font-medium text-stone-800">
                     {category.name}
                   </TableCell>
-                  <TableCell className="text-zinc-500">
-                    <code className="rounded bg-pink-50 px-1.5 py-0.5 text-xs">
+                  <TableCell className="text-stone-500">
+                    <code className="rounded bg-stone-100 px-1.5 py-0.5 text-xs">
                       {category.slug}
                     </code>
                   </TableCell>
-                  <TableCell className="text-center text-zinc-600">
+                  <TableCell className="text-center text-stone-600">
                     {category._count.products}
                   </TableCell>
                   <TableCell>
