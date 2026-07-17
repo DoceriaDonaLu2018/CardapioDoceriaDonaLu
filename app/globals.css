@@ -50,7 +50,12 @@
   }
 }
 
-/* Impressão térmica 80mm — comanda de cozinha */
+/* Impressão térmica 80mm — comanda de cozinha
+ *
+ * Onde ficam as medidas:
+ * 1) Este arquivo (`app/globals.css`) — @page size 80mm + margem lateral
+ * 2) `components/admin/kitchen-receipt.tsx` — largura do conteúdo (72mm)
+ */
 @media screen {
   .kitchen-receipt {
     position: fixed;
@@ -65,7 +70,7 @@
 @media print {
   @page {
     margin: 0;
-    size: 80mm auto;
+    size: 80mm auto; /* largura do rolo térmico */
   }
 
   body {
@@ -82,22 +87,27 @@
     visibility: visible;
   }
 
-  /* Largura impressa levemente menor que os 80mm do papel, com ~2mm de
-     folga em cada lado (≈ uma letra) para o texto não ser cortado. */
   .kitchen-receipt {
     position: absolute;
     left: 0;
     top: 0;
+    /* Papel inteiro (80mm). Padding lateral ≈ 1 letra de cada lado. */
     width: 80mm;
+    padding: 0 2.5mm;
+    box-sizing: border-box;
     opacity: 1;
   }
 
+  /* Força o conteúdo a respeitar a área útil (72mm). */
+  .kitchen-receipt .kitchen-receipt-content,
   .kitchen-receipt > * {
-    width: 76mm !important;
-    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .no-print {
     display: none !important;
   }
 }
+

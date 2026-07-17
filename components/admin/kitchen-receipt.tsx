@@ -6,17 +6,25 @@ interface KitchenReceiptProps {
   data: KitchenReceiptData;
 }
 
+/**
+ * Comanda térmica 80mm.
+ *
+ * Medidas (ver também `app/globals.css` @media print):
+ * - Papel: 80mm (`@page { size: 80mm auto }`)
+ * - Conteúdo: 72mm de largura útil + ~2.5mm de padding em cada lado
+ *   (≈ 1 caractere de folga) para a Epson não cortar o texto nas bordas.
+ */
 export function KitchenReceipt({ data }: KitchenReceiptProps) {
   const createdAt = new Date(data.createdAt);
-  const hasAdvance = data.advancePayment > 0;
-  const remaining = Math.max(0, data.totalAmount - data.advancePayment);
+  const hasAdvance = (data.advancePayment ?? 0) > 0;
+  const remaining = Math.max(0, data.totalAmount - (data.advancePayment ?? 0));
 
   return (
-    <div className="w-[300px] bg-white p-3 font-mono text-[11px] leading-tight text-black">
-      <p className="text-center text-sm font-bold uppercase tracking-wide">
+    <div className="kitchen-receipt-content box-border w-[72mm] bg-white px-[2.5mm] py-2 font-mono text-[10px] leading-tight text-black">
+      <p className="text-center text-[12px] font-bold uppercase tracking-wide">
         Doceria Dona Lu
       </p>
-      <p className="mb-2 text-center text-xs font-semibold uppercase">
+      <p className="mb-2 text-center text-[10px] font-semibold uppercase">
         Comanda — Cozinha
       </p>
 
@@ -50,7 +58,7 @@ export function KitchenReceipt({ data }: KitchenReceiptProps) {
         {data.items.map((item, index) => (
           <li key={index} className="flex gap-2">
             <span className="shrink-0 font-bold">{item.quantity}x</span>
-            <span className="flex-1">{item.title}</span>
+            <span className="min-w-0 flex-1 break-words">{item.title}</span>
           </li>
         ))}
       </ul>
@@ -59,21 +67,23 @@ export function KitchenReceipt({ data }: KitchenReceiptProps) {
 
       {hasAdvance ? (
         <div className="space-y-0.5">
-          <div className="flex justify-between">
+          <div className="flex justify-between gap-2">
             <span>Total do Pedido:</span>
-            <span>{formatPrice(data.totalAmount)}</span>
+            <span className="shrink-0">{formatPrice(data.totalAmount)}</span>
           </div>
-          <div className="flex justify-between">
+          <div className="flex justify-between gap-2">
             <span>Sinal Pago:</span>
-            <span>- {formatPrice(data.advancePayment)}</span>
+            <span className="shrink-0">
+              - {formatPrice(data.advancePayment)}
+            </span>
           </div>
-          <div className="mt-1 flex justify-between border-t border-black pt-1 text-sm font-bold">
+          <div className="mt-1 flex justify-between gap-2 border-t border-black pt-1 text-[11px] font-bold">
             <span>FALTA PAGAR:</span>
-            <span>{formatPrice(remaining)}</span>
+            <span className="shrink-0">{formatPrice(remaining)}</span>
           </div>
         </div>
       ) : (
-        <p className="text-right text-sm font-bold">
+        <p className="text-right text-[11px] font-bold">
           TOTAL: {formatPrice(data.totalAmount)}
         </p>
       )}
