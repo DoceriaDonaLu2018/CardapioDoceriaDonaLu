@@ -13,6 +13,7 @@ export type PendingOrder = {
   items: {
     quantity: number;
     priceAtTime: number;
+    productTitle?: string | null;
     product: { title: string };
   }[];
 };

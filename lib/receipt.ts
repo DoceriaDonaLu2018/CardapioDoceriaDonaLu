@@ -26,7 +26,8 @@ type OrderForReceipt = {
   items: {
     quantity: number;
     priceAtTime: number;
-    product: { title: string };
+    productTitle?: string | null;
+    product?: { title: string } | null;
   }[];
 };
 
@@ -43,7 +44,11 @@ export function toKitchenReceiptData(order: OrderForReceipt): KitchenReceiptData
     items: order.items.map(
       (item): KitchenReceiptItem => ({
         quantity: item.quantity,
-        title: item.product.title,
+        // Preferir snapshot; fallback para relação (pedidos antigos / soft delete).
+        title:
+          (item.productTitle && item.productTitle.trim()) ||
+          item.product?.title ||
+          "Produto removido",
         unitPrice: item.priceAtTime,
       })
     ),

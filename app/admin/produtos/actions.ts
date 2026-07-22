@@ -123,7 +123,11 @@ export async function deleteProduct(id: string): Promise<ProductActionState> {
   if (!id) return { error: "Produto inválido." };
 
   try {
-    await prisma.product.delete({ where: { id } });
+    // Soft delete: preserva OrderItems e o histórico de vendas.
+    await prisma.product.update({
+      where: { id },
+      data: { isDeleted: true, isAvailable: false },
+    });
   } catch {
     return { error: "Não foi possível excluir o produto." };
   }

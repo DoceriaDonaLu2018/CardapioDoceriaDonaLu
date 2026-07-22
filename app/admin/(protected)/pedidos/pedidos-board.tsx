@@ -18,14 +18,14 @@ import { usePendingOrders } from "@/hooks/use-pending-orders";
 import { canPrintOnCashierPc } from "@/lib/print";
 import { toKitchenReceiptData, type KitchenReceiptData } from "@/lib/receipt";
 import { formatOrderId } from "@/lib/order-period";
-import { formatPrice } from "@/lib/format";
+import { formatPhone, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { KitchenReceipt } from "@/components/admin/kitchen-receipt";
 
 // Guarda os IDs já impressos entre reloads da página, evitando reimprimir
 // todos os pendentes caso o kiosk seja reiniciado.
-const PRINTED_STORAGE_KEY = "dmc:auto-printed-orders";
+const PRINTED_STORAGE_KEY = "ddl:auto-printed-orders";
 const RENDER_DELAY_MS = 500; // tempo para o DOM do recibo térmico renderizar
 
 function loadPrintedIds(): Set<string> {
@@ -355,6 +355,11 @@ export function PedidosBoard() {
                         Garçom/Mesa: {order.waiterName}
                       </p>
                     )}
+                    {order.customerPhone && (
+                      <p className="mt-0.5 text-xs text-stone-500">
+                        WhatsApp: {formatPhone(order.customerPhone)}
+                      </p>
+                    )}
                     <p className="mt-0.5 font-mono text-xs text-stone-400">
                       #{formatOrderId(order.id)}
                     </p>
@@ -384,9 +389,19 @@ export function PedidosBoard() {
                 </ul>
 
                 <div className="flex items-center justify-between border-t border-stone-100 p-4">
-                  <span className="text-sm font-semibold text-stone-700">
-                    {formatPrice(order.totalAmount)}
-                  </span>
+                  <div className="text-sm">
+                    <span className="font-semibold text-stone-700">
+                      {formatPrice(order.totalAmount)}
+                    </span>
+                    {(order.advancePayment ?? 0) > 0 && (
+                      <p className="text-xs text-emerald-700">
+                        Sinal {formatPrice(order.advancePayment)} · falta{" "}
+                        {formatPrice(
+                          Math.max(0, order.totalAmount - order.advancePayment)
+                        )}
+                      </p>
+                    )}
+                  </div>
                   <Button
                     type="button"
                     onClick={() => handleComplete(order.id)}

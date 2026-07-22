@@ -35,7 +35,12 @@ export async function GET(): Promise<NextResponse> {
       items: order.items.map((item) => ({
         quantity: item.quantity,
         priceAtTime: item.priceAtTime,
-        product: { title: item.product.title },
+        productTitle: item.productTitle,
+        product: {
+          title:
+            (item.productTitle && item.productTitle.trim()) ||
+            item.product.title,
+        },
       })),
     }));
 

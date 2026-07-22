@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NovoPedidoPage() {
   const products = await prisma.product.findMany({
-    where: { isAvailable: true },
+    where: { isAvailable: true, isDeleted: false },
     orderBy: [{ category: { order: "asc" } }, { title: "asc" }],
     include: { category: true },
   });
@@ -15,7 +15,7 @@ export default async function NovoPedidoPage() {
     title: product.title,
     price: product.price,
     imageUrl: product.imageUrl,
-    categoryName: product.category.name,
+    categoryName: product.category?.name ?? "Sem categoria",
   }));
 
   return (

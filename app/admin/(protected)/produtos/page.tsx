@@ -21,6 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function ProdutosPage() {
   const [products, categories] = await Promise.all([
     prisma.product.findMany({
+      where: { isDeleted: false },
       orderBy: [{ category: { order: "asc" } }, { title: "asc" }],
       include: { category: true },
     }),
@@ -98,7 +99,7 @@ export default async function ProdutosPage() {
                     {product.title}
                   </TableCell>
                   <TableCell className="text-stone-600">
-                    {product.category.name}
+                    {product.category?.name ?? "Sem categoria"}
                   </TableCell>
                   <TableCell className="font-semibold text-coffee-700">
                     {formatPrice(product.price)}
