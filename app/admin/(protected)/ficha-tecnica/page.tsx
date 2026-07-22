@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 export default async function FichaTecnicaPage() {
   const [products, ingredients] = await Promise.all([
     prisma.product.findMany({
+      where: { isDeleted: false },
       orderBy: { title: "asc" },
       select: {
         id: true,

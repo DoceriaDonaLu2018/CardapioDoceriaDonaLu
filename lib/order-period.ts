@@ -27,9 +27,21 @@ export function getOrderDateFilter(period: string): { gte: Date } | undefined {
 
 /** Resumo legível dos itens. Ex.: "2x Café, 1x Pão de Queijo" */
 export function formatOrderSummary(
-  items: { quantity: number; product: { title: string } }[]
+  items: {
+    quantity: number;
+    productTitle?: string | null;
+    product?: { title: string } | null;
+  }[]
 ): string {
-  return items.map((item) => `${item.quantity}x ${item.product.title}`).join(", ");
+  return items
+    .map((item) => {
+      const title =
+        (item.productTitle && item.productTitle.trim()) ||
+        item.product?.title ||
+        "Produto removido";
+      return `${item.quantity}x ${title}`;
+    })
+    .join(", ");
 }
 
 /** ID curto para exibição na tabela. */

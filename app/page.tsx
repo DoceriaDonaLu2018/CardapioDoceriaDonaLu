@@ -11,7 +11,7 @@ export default async function Home() {
     orderBy: { order: "asc" },
     include: {
       products: {
-        where: { isAvailable: true },
+        where: { isAvailable: true, isDeleted: false },
         orderBy: { title: "asc" },
       },
     },

@@ -27,6 +27,7 @@ export type HistoricoOrderRow = {
   items: {
     quantity: number;
     priceAtTime: number;
+    productTitle?: string | null;
     product: { title: string };
   }[];
 };

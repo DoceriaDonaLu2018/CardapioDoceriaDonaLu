@@ -31,16 +31,19 @@ model Product {
   price           Float
   costPrice       Float        @default(0)
   isAvailable     Boolean      @default(true)
+  // Soft delete: produto some da vitrine/PDV, mas permanece no histórico de vendas.
+  isDeleted       Boolean      @default(false)
   pricingStrategy String? // markupPercent | marginPercent | fixedProfit | finalPrice
   pricingValue    Float?
-  categoryId      String
-  category        Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId      String?
+  category        Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   orderItems      OrderItem[]
   recipeItems     RecipeItem[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
   @@index([categoryId])
+  @@index([isDeleted])
 }
 
 model Ingredient {
@@ -85,14 +88,16 @@ model Order {
 }
 
 model OrderItem {
-  id          String  @id @default(cuid())
-  orderId     String
-  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity    Int
-  priceAtTime Float
-  costAtTime  Float   @default(0)
+  id           String  @id @default(cuid())
+  orderId      String
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  // Snapshot do título no momento da venda (histórico sobrevive a soft delete / rename).
+  productTitle String  @default("")
+  quantity     Int
+  priceAtTime  Float
+  costAtTime   Float   @default(0)
 
   @@index([orderId])
   @@index([productId])

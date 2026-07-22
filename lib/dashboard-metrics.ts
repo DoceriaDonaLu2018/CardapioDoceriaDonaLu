@@ -134,12 +134,12 @@ async function getCategorySales(since: Date): Promise<CategorySales[]> {
 
   const rows = await prisma.$queryRaw<Row[]>`
     SELECT
-      c.name AS category_name,
+      COALESCE(c.name, 'Sem categoria') AS category_name,
       COALESCE(SUM(oi."priceAtTime" * oi.quantity), 0) AS revenue
     FROM order_items oi
     INNER JOIN orders o ON o.id = oi."orderId"
     INNER JOIN "Product" p ON p.id = oi."productId"
-    INNER JOIN "Category" c ON c.id = p."categoryId"
+    LEFT JOIN "Category" c ON c.id = p."categoryId"
     WHERE o.status = 'COMPLETED'
       AND o."createdAt" >= ${since}
     GROUP BY c.id, c.name
