@@ -7,8 +7,12 @@ interface PendingOrdersBadgeProps {
   collapsed?: boolean;
 }
 
+/** Badge leve: só conta pedidos pendentes a cada 15s (sem payload de itens). */
 export function PendingOrdersBadge({ collapsed }: PendingOrdersBadgeProps) {
-  const { count } = usePendingOrders();
+  const { count } = usePendingOrders({
+    countOnly: true,
+    intervalMs: 15_000,
+  });
 
   if (count <= 0) return null;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, useDeferredValue } from "react";
 import Image from "next/image";
 import {
   CheckCircle2,
@@ -112,9 +112,11 @@ export function PdvClient({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Mantém o input responsivo enquanto a grade de imagens filtra com prioridade baixa.
+  const deferredSearch = useDeferredValue(search);
 
   const filteredProducts = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = deferredSearch.trim().toLowerCase();
     return products.filter((product) => {
       const matchesCategory =
         categoryId === "all"
@@ -126,7 +128,7 @@ export function PdvClient({
         !query || product.title.toLowerCase().includes(query);
       return matchesCategory && matchesSearch;
     });
-  }, [products, search, categoryId]);
+  }, [products, deferredSearch, categoryId]);
 
   const total = useMemo(
     () => cart.reduce((sum, line) => sum + line.price * line.quantity, 0),

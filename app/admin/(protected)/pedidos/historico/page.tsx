@@ -20,9 +20,10 @@ export default async function HistoricoPedidosPage({
 }: HistoricoPageProps) {
   const params = (await searchParams) ?? {};
   const rawPeriod = params.period;
+  // Default "month" evita carregar o histórico inteiro na primeira visita.
   const period: OrderPeriod = VALID_PERIODS.has(rawPeriod ?? "")
     ? (rawPeriod as OrderPeriod)
-    : "all";
+    : "month";
   const selectedDate = params.date?.trim() || null;
   const dayRange = selectedDate ? getBrasiliaDayRange(selectedDate) : null;
 
@@ -33,7 +34,23 @@ export default async function HistoricoPedidosPage({
   let orders: Awaited<
     ReturnType<
       typeof prisma.order.findMany<{
-        include: { items: { include: { product: true } } };
+        select: {
+          id: true;
+          customerName: true;
+          customerPhone: true;
+          waiterName: true;
+          createdAt: true;
+          totalAmount: true;
+          advancePayment: true;
+          items: {
+            select: {
+              quantity: true;
+              priceAtTime: true;
+              productTitle: true;
+              product: { select: { title: true } };
+            };
+          };
+        };
       }>
     >
   > = [];
@@ -46,9 +63,21 @@ export default async function HistoricoPedidosPage({
         ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
       },
       orderBy: { createdAt: "desc" },
-      include: {
+      select: {
+        id: true,
+        customerName: true,
+        customerPhone: true,
+        waiterName: true,
+        createdAt: true,
+        totalAmount: true,
+        advancePayment: true,
         items: {
-          include: { product: true },
+          select: {
+            quantity: true,
+            priceAtTime: true,
+            productTitle: true,
+            product: { select: { title: true } },
+          },
         },
       },
     });

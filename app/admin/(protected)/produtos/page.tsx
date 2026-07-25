@@ -12,9 +12,22 @@ export default async function ProdutosPage() {
     prisma.product.findMany({
       where: { isDeleted: false },
       orderBy: [{ category: { order: "asc" } }, { title: "asc" }],
-      include: { category: true },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        imageUrl: true,
+        price: true,
+        costPrice: true,
+        isAvailable: true,
+        categoryId: true,
+        category: { select: { id: true, name: true } },
+      },
     }),
-    prisma.category.findMany({ orderBy: { order: "asc" } }),
+    prisma.category.findMany({
+      orderBy: { order: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
 
   const hasCategories = categories.length > 0;

@@ -27,7 +27,7 @@ export function OrderHistoryFilters({
 
   function goToDate(date: string) {
     if (!date) {
-      goToPeriod("all");
+      goToPeriod("month");
       return;
     }
     router.push(`/admin/pedidos/historico?date=${date}`);

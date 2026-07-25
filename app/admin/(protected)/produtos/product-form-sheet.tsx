@@ -2,8 +2,6 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import type { Category, Product } from "@prisma/client";
-
 import {
   createProduct,
   updateProduct,
@@ -32,9 +30,26 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
+/** Campos mínimos usados pelo formulário (evita acoplar ao modelo Prisma completo). */
+export type ProductFormValues = {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  price: number;
+  costPrice: number;
+  isAvailable: boolean;
+  categoryId: string | null;
+};
+
+export type ProductFormCategory = {
+  id: string;
+  name: string;
+};
+
 interface ProductFormSheetProps {
-  product?: Product;
-  categories: Category[];
+  product?: ProductFormValues;
+  categories: ProductFormCategory[];
   trigger: React.ReactNode;
 }
 

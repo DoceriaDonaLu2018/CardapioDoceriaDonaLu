@@ -14,9 +14,12 @@ export function useScrollSpy(
   rootMargin = "-45% 0px -50% 0px"
 ): string {
   const [activeId, setActiveId] = useState<string>(sectionIds[0] ?? "");
+  // Chave estável: evita teardown do observer quando o array é recriado com os mesmos ids.
+  const sectionKey = sectionIds.join("|");
 
   useEffect(() => {
-    if (sectionIds.length === 0) return;
+    const ids = sectionKey ? sectionKey.split("|") : [];
+    if (ids.length === 0) return;
 
     const visibility = new Map<string, number>();
 
@@ -26,7 +29,6 @@ export function useScrollSpy(
           visibility.set(entry.target.id, entry.intersectionRatio);
         }
 
-        // Escolhe a seção com maior proporção visível dentro da faixa central.
         let best: string | null = null;
         let bestRatio = 0;
         for (const [id, ratio] of visibility) {
@@ -44,14 +46,14 @@ export function useScrollSpy(
       }
     );
 
-    const elements = sectionIds
+    const elements = ids
       .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => el !== null);
 
     elements.forEach((el) => observer.observe(el));
 
     return () => observer.disconnect();
-  }, [sectionIds, rootMargin]);
+  }, [sectionKey, rootMargin]);
 
   return activeId;
 }

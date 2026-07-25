@@ -77,22 +77,62 @@ function getBrasiliaStartOfMonth(reference = new Date()): Date {
 }
 
 /**
- * Agrega receita/custo/lucro no banco (SUM de price*qty e cost*qty),
- * apenas sobre pedidos COMPLETED a partir de `since`.
+ * Uma única varredura de order_items para today / week / month
+ * (antes eram 3 queries quase idênticas).
  */
-async function getPeriodMetrics(since: Date): Promise<PeriodMetrics> {
-  const rows = await prisma.$queryRaw<RawTotals[]>`
+async function getPeriodMetricsBatch(
+  startOfToday: Date,
+  startOfWeek: Date,
+  startOfMonth: Date
+): Promise<{ today: PeriodMetrics; week: PeriodMetrics; month: PeriodMetrics }> {
+  type BatchRow = {
+    today_revenue: number | string | null;
+    today_cost: number | string | null;
+    today_orders: number | string | null;
+    week_revenue: number | string | null;
+    week_cost: number | string | null;
+    week_orders: number | string | null;
+    month_revenue: number | string | null;
+    month_cost: number | string | null;
+    month_orders: number | string | null;
+  };
+
+  const rows = await prisma.$queryRaw<BatchRow[]>`
     SELECT
-      COALESCE(SUM(oi."priceAtTime" * oi.quantity), 0) AS revenue,
-      COALESCE(SUM(oi."costAtTime" * oi.quantity), 0) AS cost,
-      COUNT(DISTINCT o.id)::int AS order_count
+      COALESCE(SUM(oi."priceAtTime" * oi.quantity) FILTER (WHERE o."createdAt" >= ${startOfToday}), 0) AS today_revenue,
+      COALESCE(SUM(oi."costAtTime" * oi.quantity) FILTER (WHERE o."createdAt" >= ${startOfToday}), 0) AS today_cost,
+      COUNT(DISTINCT o.id) FILTER (WHERE o."createdAt" >= ${startOfToday})::int AS today_orders,
+      COALESCE(SUM(oi."priceAtTime" * oi.quantity) FILTER (WHERE o."createdAt" >= ${startOfWeek}), 0) AS week_revenue,
+      COALESCE(SUM(oi."costAtTime" * oi.quantity) FILTER (WHERE o."createdAt" >= ${startOfWeek}), 0) AS week_cost,
+      COUNT(DISTINCT o.id) FILTER (WHERE o."createdAt" >= ${startOfWeek})::int AS week_orders,
+      COALESCE(SUM(oi."priceAtTime" * oi.quantity) FILTER (WHERE o."createdAt" >= ${startOfMonth}), 0) AS month_revenue,
+      COALESCE(SUM(oi."costAtTime" * oi.quantity) FILTER (WHERE o."createdAt" >= ${startOfMonth}), 0) AS month_cost,
+      COUNT(DISTINCT o.id) FILTER (WHERE o."createdAt" >= ${startOfMonth})::int AS month_orders
     FROM order_items oi
     INNER JOIN orders o ON o.id = oi."orderId"
     WHERE o.status = 'COMPLETED'
-      AND o."createdAt" >= ${since}
+      AND o."createdAt" >= ${startOfMonth}
   `;
 
-  return buildMetrics(rows[0]);
+  const row = rows[0];
+
+  return {
+    today: buildMetrics({
+      revenue: row?.today_revenue,
+      cost: row?.today_cost,
+      order_count: row?.today_orders,
+    }),
+    week: buildMetrics({
+      revenue: row?.week_revenue,
+      cost: row?.week_cost,
+      order_count: row?.week_orders,
+    }),
+    month: buildMetrics({
+      revenue: row?.month_revenue,
+      cost: row?.month_cost,
+      order_count: row?.month_orders,
+    }),
+  };
 }
 
 /** Top 7 produtos mais vendidos no mês civil atual (quantidade). */
@@ -211,20 +251,18 @@ export async function getDashboardData(): Promise<DashboardData> {
   const startOfWeek = subtractDays(startOfToday, 7);
   const startOfMonth = subtractDays(startOfToday, 30);
 
-  const [today, week, month, topProducts, categorySales, weeklyEvolution] =
+  const [periods, topProducts, categorySales, weeklyEvolution] =
     await Promise.all([
-      getPeriodMetrics(startOfToday),
-      getPeriodMetrics(startOfWeek),
-      getPeriodMetrics(startOfMonth),
+      getPeriodMetricsBatch(startOfToday, startOfWeek, startOfMonth),
       getTopProducts(7),
       getCategorySales(startOfMonth),
       getWeeklyEvolution(startOfWeek),
     ]);
 
   return {
-    today,
-    week,
-    month,
+    today: periods.today,
+    week: periods.week,
+    month: periods.month,
     topProducts,
     categorySales,
     weeklyEvolution,

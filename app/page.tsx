@@ -3,21 +3,31 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { ProductCard } from "@/components/ProductCard";
 
-export const dynamic = "force-dynamic";
+/** Cardápio público: ISR 60s — invalidado também via revalidatePath nas mutations. */
+export const revalidate = 60;
 
 export default async function Home() {
-  // Busca as categorias com seus produtos disponíveis, direto do banco.
+  // Apenas colunas usadas pelo ProductCard / navegação — evita overfetch.
   const categories = await prisma.category.findMany({
     orderBy: { order: "asc" },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
       products: {
         where: { isAvailable: true, isDeleted: false },
         orderBy: { title: "asc" },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          imageUrl: true,
+          price: true,
+        },
       },
     },
   });
 
-  // Mantém no menu apenas categorias que tenham ao menos um produto.
   const visibleCategories = categories.filter(
     (category) => category.products.length > 0
   );
@@ -32,7 +42,6 @@ export default async function Home() {
       <Header categories={headerCategories} />
 
       <main className="flex-1">
-        {/* Hero */}
         <section className="border-b border-stone-200 bg-white">
           <div className="container flex flex-col items-center gap-4 py-16 text-center">
             <span className="rounded-full bg-coffee-100 px-4 py-1 text-sm font-medium text-coffee-700">
@@ -48,7 +57,6 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* Seções por categoria */}
         <div className="container py-12">
           {visibleCategories.length === 0 ? (
             <p className="py-20 text-center text-stone-500">

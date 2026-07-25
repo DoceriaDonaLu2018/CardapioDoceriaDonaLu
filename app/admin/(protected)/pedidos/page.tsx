@@ -1,7 +1,6 @@
 import { PedidosBoard } from "./pedidos-board";
 
-export const dynamic = "force-dynamic";
-
+/** Dados vêm do client polling — sem force-dynamic desnecessário. */
 export default function PedidosPage() {
   return (
     <div className="space-y-6">

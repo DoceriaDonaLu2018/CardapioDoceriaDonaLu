@@ -95,6 +95,7 @@ export async function createOrder(
   try {
     products = await prisma.product.findMany({
       where: { id: { in: productIds }, isAvailable: true, isDeleted: false },
+      select: { id: true, title: true, price: true, costPrice: true },
     });
   } catch (error) {
     console.error("createOrder find products:", error);
@@ -298,6 +299,7 @@ export async function updateOrder(
     // mas bloqueia soft-deleted.
     products = await prisma.product.findMany({
       where: { id: { in: productIds }, isDeleted: false },
+      select: { id: true, title: true, price: true, costPrice: true },
     });
   } catch (error) {
     console.error("updateOrder find products:", error);

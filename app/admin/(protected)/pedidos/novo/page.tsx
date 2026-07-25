@@ -17,14 +17,33 @@ export default async function NovoPedidoPage({
     prisma.product.findMany({
       where: { isAvailable: true, isDeleted: false },
       orderBy: [{ category: { order: "asc" } }, { title: "asc" }],
-      include: { category: true },
+      select: {
+        id: true,
+        title: true,
+        price: true,
+        imageUrl: true,
+        categoryId: true,
+        category: { select: { name: true } },
+      },
     }),
     orderId
       ? prisma.order.findUnique({
           where: { id: orderId },
-          include: {
+          select: {
+            id: true,
+            status: true,
+            customerName: true,
+            customerPhone: true,
+            waiterName: true,
+            advancePayment: true,
             items: {
-              include: { product: { select: { title: true, price: true } } },
+              select: {
+                productId: true,
+                productTitle: true,
+                priceAtTime: true,
+                quantity: true,
+                product: { select: { title: true, price: true } },
+              },
             },
           },
         })
@@ -60,7 +79,6 @@ export default async function NovoPedidoPage({
           title:
             (item.productTitle && item.productTitle.trim()) ||
             item.product.title,
-          // Preserva o valor original da comanda ao reabrir.
           price: item.priceAtTime,
           quantity: item.quantity,
         })),

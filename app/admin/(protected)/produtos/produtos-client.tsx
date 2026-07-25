@@ -3,8 +3,6 @@
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import { Pencil, Search } from "lucide-react";
-import type { Category, Product } from "@prisma/client";
-
 import { deleteProduct } from "@/app/admin/produtos/actions";
 import { formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -19,15 +17,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DeleteConfirmDialog } from "@/components/admin/delete-confirm-dialog";
-import { ProductFormSheet } from "./product-form-sheet";
+import {
+  ProductFormSheet,
+  type ProductFormCategory,
+  type ProductFormValues,
+} from "./product-form-sheet";
 
-type ProductRow = Product & {
-  category: Category | null;
+type ProductRow = ProductFormValues & {
+  category: { id: string; name: string } | null;
 };
 
 interface ProdutosClientProps {
   products: ProductRow[];
-  categories: Category[];
+  categories: ProductFormCategory[];
 }
 
 export function ProdutosClient({ products, categories }: ProdutosClientProps) {

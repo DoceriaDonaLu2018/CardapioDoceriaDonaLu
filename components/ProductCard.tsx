@@ -91,7 +91,6 @@ export function ProductCard({ product, className }: ProductCardProps) {
               fill
               sizes="(max-width: 448px) 100vw, 28rem"
               className="object-cover"
-              priority
             />
           </div>
 

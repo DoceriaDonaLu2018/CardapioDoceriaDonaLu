@@ -52,50 +52,102 @@ export async function saveFichaTecnica(
     return { error: "Produto não encontrado." };
   }
 
-  // Considera apenas ingredientes válidos (com nome e quantidade usada).
   const validLines = input.ingredients.filter(
     (line) => line.name.trim() && line.quantityUsed > 0
   );
 
   try {
-    // Resolve/cria os ingredientes e mescla linhas duplicadas por ingrediente.
     const usedByIngredient = new Map<string, number>();
 
-    for (const line of validLines) {
-      const name = line.name.trim();
+    // Preload em 1 query + writes em uma única transaction (elimina N+1 de upserts).
+    await prisma.$transaction(async (tx) => {
+      if (validLines.length > 0) {
+        const ids = [
+          ...new Set(
+            validLines
+              .map((line) => line.ingredientId)
+              .filter((id): id is string => Boolean(id))
+          ),
+        ];
+        const names = [
+          ...new Set(validLines.map((line) => line.name.trim())),
+        ];
 
-      const ingredient = await prisma.ingredient.upsert({
-        where: line.ingredientId
-          ? { id: line.ingredientId }
-          : { name },
-        update: {
-          purchasePrice: line.packagePrice,
-          purchaseQuantity: line.packageQuantity,
-          unit: line.unit,
-        },
-        create: {
-          name,
-          purchasePrice: line.packagePrice,
-          purchaseQuantity: line.packageQuantity,
-          unit: line.unit,
-        },
-        select: { id: true },
-      });
+        const orFilters = [
+          ...(ids.length > 0 ? [{ id: { in: ids } }] : []),
+          ...(names.length > 0 ? [{ name: { in: names } }] : []),
+        ];
 
-      usedByIngredient.set(
-        ingredient.id,
-        (usedByIngredient.get(ingredient.id) ?? 0) + line.quantityUsed
-      );
-    }
+        const existing =
+          orFilters.length > 0
+            ? await tx.ingredient.findMany({
+                where: { OR: orFilters },
+                select: { id: true, name: true },
+              })
+            : [];
 
-    await prisma.$transaction([
-      prisma.recipeItem.deleteMany({ where: { productId: input.productId } }),
-      ...[...usedByIngredient.entries()].map(([ingredientId, quantityUsed]) =>
-        prisma.recipeItem.create({
-          data: { productId: input.productId, ingredientId, quantityUsed },
-        })
-      ),
-      prisma.product.update({
+        const byId = new Map(existing.map((row) => [row.id, row]));
+        const byName = new Map(existing.map((row) => [row.name, row]));
+
+        for (const line of validLines) {
+          const name = line.name.trim();
+          const known =
+            (line.ingredientId ? byId.get(line.ingredientId) : undefined) ??
+            byName.get(name);
+
+          let ingredientId: string;
+
+          if (known) {
+            await tx.ingredient.update({
+              where: { id: known.id },
+              data: {
+                name,
+                purchasePrice: line.packagePrice,
+                purchaseQuantity: line.packageQuantity,
+                unit: line.unit,
+              },
+            });
+            ingredientId = known.id;
+            byName.delete(known.name);
+            byName.set(name, { id: known.id, name });
+            byId.set(known.id, { id: known.id, name });
+          } else {
+            const created = await tx.ingredient.create({
+              data: {
+                name,
+                purchasePrice: line.packagePrice,
+                purchaseQuantity: line.packageQuantity,
+                unit: line.unit,
+              },
+              select: { id: true, name: true },
+            });
+            ingredientId = created.id;
+            byId.set(created.id, created);
+            byName.set(created.name, created);
+          }
+
+          usedByIngredient.set(
+            ingredientId,
+            (usedByIngredient.get(ingredientId) ?? 0) + line.quantityUsed
+          );
+        }
+      }
+
+      await tx.recipeItem.deleteMany({ where: { productId: input.productId } });
+
+      if (usedByIngredient.size > 0) {
+        await tx.recipeItem.createMany({
+          data: [...usedByIngredient.entries()].map(
+            ([ingredientId, quantityUsed]) => ({
+              productId: input.productId,
+              ingredientId,
+              quantityUsed,
+            })
+          ),
+        });
+      }
+
+      await tx.product.update({
         where: { id: input.productId },
         data: {
           price: round2(input.sellingPrice),
@@ -103,8 +155,8 @@ export async function saveFichaTecnica(
           pricingStrategy: input.mode,
           pricingValue: input.strategyValue,
         },
-      }),
-    ]);
+      });
+    });
   } catch (error) {
     console.error("saveFichaTecnica:", error);
     return { error: "Não foi possível salvar a ficha técnica." };

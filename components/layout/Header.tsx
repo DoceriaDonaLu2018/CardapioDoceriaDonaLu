@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CakeSlice, Menu } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -26,7 +26,12 @@ interface HeaderProps {
 
 export function Header({ categories }: HeaderProps) {
   const [open, setOpen] = useState(false);
-  const activeId = useScrollSpy(categories.map((category) => category.id));
+  // Estabiliza a referência para o IntersectionObserver não reiniciar a cada render.
+  const sectionIds = useMemo(
+    () => categories.map((category) => category.id),
+    [categories]
+  );
+  const activeId = useScrollSpy(sectionIds);
 
   function handleNavigate(id: string) {
     setOpen(false);

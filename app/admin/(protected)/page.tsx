@@ -1,3 +1,4 @@
+import nextDynamic from "next/dynamic";
 import {
   CalendarDays,
   CalendarRange,
@@ -14,13 +15,40 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  CategorySalesList,
-  TopProductsChart,
-  WeeklyEvolutionChart,
-} from "@/components/admin/dashboard-charts";
+import { CategorySalesList } from "@/components/admin/category-sales-list";
 
 export const dynamic = "force-dynamic";
+
+/** Recharts só no client — reduz JS inicial do dashboard. */
+const TopProductsChart = nextDynamic(
+  () =>
+    import("@/components/admin/dashboard-charts").then(
+      (mod) => mod.TopProductsChart
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[280px] items-center justify-center text-sm text-stone-400">
+        Carregando gráfico…
+      </div>
+    ),
+  }
+);
+
+const WeeklyEvolutionChart = nextDynamic(
+  () =>
+    import("@/components/admin/dashboard-charts").then(
+      (mod) => mod.WeeklyEvolutionChart
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[180px] items-center justify-center text-sm text-stone-400">
+        Carregando gráfico…
+      </div>
+    ),
+  }
+);
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
@@ -58,7 +86,6 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {kpiCards.map((card) => {
           const Icon = card.icon;
@@ -88,7 +115,6 @@ export default async function DashboardPage() {
         })}
       </div>
 
-      {/* Gráficos */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
