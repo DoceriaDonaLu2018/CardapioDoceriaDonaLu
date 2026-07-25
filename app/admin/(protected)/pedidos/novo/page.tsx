@@ -13,7 +13,7 @@ export default async function NovoPedidoPage({
   const params = (await searchParams) ?? {};
   const orderId = params.orderId?.trim() || null;
 
-  const [products, order] = await Promise.all([
+  const [products, order, categories] = await Promise.all([
     prisma.product.findMany({
       where: { isAvailable: true, isDeleted: false },
       orderBy: [{ category: { order: "asc" } }, { title: "asc" }],
@@ -29,6 +29,10 @@ export default async function NovoPedidoPage({
           },
         })
       : Promise.resolve(null),
+    prisma.category.findMany({
+      orderBy: { order: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
 
   const pdvProducts = products.map((product) => ({
@@ -36,6 +40,7 @@ export default async function NovoPedidoPage({
     title: product.title,
     price: product.price,
     imageUrl: product.imageUrl,
+    categoryId: product.categoryId,
     categoryName: product.category?.name ?? "Sem categoria",
   }));
 
@@ -75,7 +80,11 @@ export default async function NovoPedidoPage({
         </p>
       </div>
 
-      <PdvClient products={pdvProducts} initialOrder={initialOrder} />
+      <PdvClient
+        products={pdvProducts}
+        categories={categories}
+        initialOrder={initialOrder}
+      />
     </div>
   );
 }

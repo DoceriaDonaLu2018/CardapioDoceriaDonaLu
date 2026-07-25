@@ -38,7 +38,13 @@ export type PdvProduct = {
   title: string;
   price: number;
   imageUrl: string;
+  categoryId: string | null;
   categoryName: string;
+};
+
+export type PdvCategory = {
+  id: string;
+  name: string;
 };
 
 export type PdvInitialOrder = {
@@ -64,11 +70,17 @@ type CartLine = {
 
 interface PdvClientProps {
   products: PdvProduct[];
+  categories: PdvCategory[];
   initialOrder?: PdvInitialOrder | null;
 }
 
-export function PdvClient({ products, initialOrder = null }: PdvClientProps) {
+export function PdvClient({
+  products,
+  categories,
+  initialOrder = null,
+}: PdvClientProps) {
   const [search, setSearch] = useState("");
+  const [categoryId, setCategoryId] = useState<string>("all");
   const [editingOrderId, setEditingOrderId] = useState<string | null>(
     initialOrder?.id ?? null
   );
@@ -103,11 +115,18 @@ export function PdvClient({ products, initialOrder = null }: PdvClientProps) {
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return products;
-    return products.filter((product) =>
-      product.title.toLowerCase().includes(query)
-    );
-  }, [products, search]);
+    return products.filter((product) => {
+      const matchesCategory =
+        categoryId === "all"
+          ? true
+          : categoryId === "none"
+            ? !product.categoryId
+            : product.categoryId === categoryId;
+      const matchesSearch =
+        !query || product.title.toLowerCase().includes(query);
+      return matchesCategory && matchesSearch;
+    });
+  }, [products, search, categoryId]);
 
   const total = useMemo(
     () => cart.reduce((sum, line) => sum + line.price * line.quantity, 0),
@@ -227,6 +246,38 @@ export function PdvClient({ products, initialOrder = null }: PdvClientProps) {
             className="bg-white pl-9"
           />
         </div>
+
+        {categories.length > 0 && (
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+            <button
+              type="button"
+              onClick={() => setCategoryId("all")}
+              className={cn(
+                "shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                categoryId === "all"
+                  ? "border-coffee-600 bg-coffee-600 text-white"
+                  : "border-stone-200 bg-white text-stone-600 hover:border-coffee-300 hover:text-coffee-700"
+              )}
+            >
+              Todos
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => setCategoryId(category.id)}
+                className={cn(
+                  "shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                  categoryId === category.id
+                    ? "border-coffee-600 bg-coffee-600 text-white"
+                    : "border-stone-200 bg-white text-stone-600 hover:border-coffee-300 hover:text-coffee-700"
+                )}
+              >
+                {category.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         {filteredProducts.length === 0 ? (
           <p className="rounded-xl border border-dashed border-stone-300 bg-white py-12 text-center text-sm text-stone-500">
