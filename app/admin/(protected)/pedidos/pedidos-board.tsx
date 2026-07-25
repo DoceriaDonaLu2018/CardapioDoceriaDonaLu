@@ -7,13 +7,19 @@ import {
   Loader2,
   Play,
   Printer,
+  RotateCcw,
   TriangleAlert,
   User,
   UtensilsCrossed,
   X,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
-import { completeOrder } from "@/app/admin/pedidos/actions";
+import {
+  cancelOrder,
+  completeOrder,
+  reopenOrder,
+} from "@/app/admin/pedidos/actions";
 import { usePendingOrders } from "@/hooks/use-pending-orders";
 import { canPrintOnCashierPc } from "@/lib/print";
 import { toKitchenReceiptData, type KitchenReceiptData } from "@/lib/receipt";
@@ -22,6 +28,7 @@ import { formatPhone, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { KitchenReceipt } from "@/components/admin/kitchen-receipt";
+import { DeleteConfirmDialog } from "@/components/admin/delete-confirm-dialog";
 
 // Guarda os IDs já impressos entre reloads da página, evitando reimprimir
 // todos os pendentes caso o kiosk seja reiniciado.
@@ -63,6 +70,7 @@ export function PedidosBoard() {
   // Trava de interação: o polling e a auto-impressão só rodam após o
   // atendente clicar no botão (gesto de usuário exigido pelo navegador).
   const [isAutoPrintEnabled, setIsAutoPrintEnabled] = useState(false);
+  const router = useRouter();
 
   const { orders, isLoading, refresh } = usePendingOrders(isAutoPrintEnabled);
 
@@ -221,6 +229,30 @@ export function PedidosBoard() {
       }
 
       refresh();
+    });
+  }
+
+  async function handleCancel(orderId: string) {
+    setError(null);
+    const result = await cancelOrder(orderId);
+    if (result.error) {
+      setError(result.error);
+      return result;
+    }
+    setHiddenIds((current) => new Set(current).add(orderId));
+    refresh();
+    return result;
+  }
+
+  function handleReopen(orderId: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await reopenOrder(orderId);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      router.push(`/admin/pedidos/novo?orderId=${orderId}`);
     });
   }
 
@@ -388,38 +420,68 @@ export function PedidosBoard() {
                   ))}
                 </ul>
 
-                <div className="flex items-center justify-between border-t border-stone-100 p-4">
-                  <div className="text-sm">
-                    <span className="font-semibold text-stone-700">
-                      {formatPrice(order.totalAmount)}
-                    </span>
-                    {(order.advancePayment ?? 0) > 0 && (
-                      <p className="text-xs text-emerald-700">
-                        Sinal {formatPrice(order.advancePayment)} · falta{" "}
-                        {formatPrice(
-                          Math.max(0, order.totalAmount - order.advancePayment)
-                        )}
-                      </p>
-                    )}
+                <div className="flex flex-col gap-2 border-t border-stone-100 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm">
+                      <span className="font-semibold text-stone-700">
+                        {formatPrice(order.totalAmount)}
+                      </span>
+                      {(order.advancePayment ?? 0) > 0 && (
+                        <p className="text-xs text-emerald-700">
+                          Sinal {formatPrice(order.advancePayment)} · falta{" "}
+                          {formatPrice(
+                            Math.max(
+                              0,
+                              order.totalAmount - order.advancePayment
+                            )
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => handleComplete(order.id)}
+                      disabled={isCompleting}
+                      className="bg-coffee-600 text-white hover:bg-coffee-700"
+                    >
+                      {isCompleting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Concluindo...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-4 w-4" />
+                          Concluir Pedido
+                        </>
+                      )}
+                    </Button>
                   </div>
-                  <Button
-                    type="button"
-                    onClick={() => handleComplete(order.id)}
-                    disabled={isCompleting}
-                    className="bg-coffee-600 text-white hover:bg-coffee-700"
-                  >
-                    {isCompleting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Concluindo...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="h-4 w-4" />
-                        Concluir Pedido
-                      </>
-                    )}
-                  </Button>
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleReopen(order.id)}
+                      className="text-stone-700"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Reabrir
+                    </Button>
+                    <DeleteConfirmDialog
+                      title="Cancelar pedido"
+                      description={`Cancelar o pedido de ${order.customerName}? Ele sairá da fila ativa e não entrará no histórico de vendas.`}
+                      confirmLabel="Cancelar pedido"
+                      pendingLabel="Cancelando..."
+                      triggerLabel="Cancelar"
+                      triggerSize="sm"
+                      triggerVariant="outline"
+                      triggerClassName="text-red-600 hover:bg-red-50 hover:text-red-700"
+                      showTrashIcon={false}
+                      onConfirm={() => handleCancel(order.id)}
+                    />
+                  </div>
                 </div>
               </div>
             );

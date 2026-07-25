@@ -43,12 +43,18 @@ type IngredientOption = {
   unit: string;
 };
 
+type CategoryOption = {
+  id: string;
+  name: string;
+};
+
 type ProductOption = {
   id: string;
   title: string;
   price: number;
   pricingStrategy: string | null;
   pricingValue: number | null;
+  categoryId: string | null;
   recipeItems: {
     quantityUsed: number;
     ingredient: IngredientOption;
@@ -58,6 +64,7 @@ type ProductOption = {
 interface FichaTecnicaClientProps {
   products: ProductOption[];
   ingredients: IngredientOption[];
+  categories: CategoryOption[];
 }
 
 const CUSTOM_INGREDIENT = "__custom__";
@@ -125,10 +132,12 @@ const num = (value: unknown): number => {
 export function FichaTecnicaClient({
   products,
   ingredients,
+  categories,
 }: FichaTecnicaClientProps) {
   const [isPending, startTransition] = useTransition();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
   const { control, register, watch, setValue, reset, getValues } =
     useForm<FormValues>({
@@ -146,6 +155,14 @@ export function FichaTecnicaClient({
   const costArray = useFieldArray({ control, name: "additionalCosts" });
 
   const values = watch();
+
+  const filteredProducts = useMemo(() => {
+    if (categoryFilter === "all") return products;
+    if (categoryFilter === "none") {
+      return products.filter((product) => !product.categoryId);
+    }
+    return products.filter((product) => product.categoryId === categoryFilter);
+  }, [products, categoryFilter]);
 
   const result = useMemo(() => {
     const input: PricingInput = {
@@ -285,35 +302,70 @@ export function FichaTecnicaClient({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Controller
-              control={control}
-              name="productId"
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onValueChange={(value) => {
-                    field.onChange(value === CUSTOM_INGREDIENT ? "" : value);
-                    handleSelectProduct(
-                      value === CUSTOM_INGREDIENT ? "" : value
-                    );
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um produto..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={CUSTOM_INGREDIENT}>
-                      Novo cálculo (produto avulso)
+            <div className="space-y-2">
+              <Label>Categoria</Label>
+              <Select
+                value={categoryFilter}
+                onValueChange={(value) => {
+                  setCategoryFilter(value);
+                  const currentId = getValues("productId");
+                  if (!currentId) return;
+                  const stillVisible = products.some((product) => {
+                    if (product.id !== currentId) return false;
+                    if (value === "all") return true;
+                    if (value === "none") return !product.categoryId;
+                    return product.categoryId === value;
+                  });
+                  if (!stillVisible) handleSelectProduct("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas as categorias" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as categorias</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
                     </SelectItem>
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.title}
+                  ))}
+                  <SelectItem value="none">Sem categoria</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Produto</Label>
+              <Controller
+                control={control}
+                name="productId"
+                render={({ field }) => (
+                  <Select
+                    value={field.value || undefined}
+                    onValueChange={(value) => {
+                      field.onChange(value === CUSTOM_INGREDIENT ? "" : value);
+                      handleSelectProduct(
+                        value === CUSTOM_INGREDIENT ? "" : value
+                      );
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um produto..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={CUSTOM_INGREDIENT}>
+                        Novo cálculo (produto avulso)
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
+                      {filteredProducts.map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
 
             <div className="flex flex-col gap-2">
               <Button

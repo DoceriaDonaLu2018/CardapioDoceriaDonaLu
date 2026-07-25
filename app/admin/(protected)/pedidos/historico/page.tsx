@@ -3,15 +3,16 @@ import {
   getOrderDateFilter,
   type OrderPeriod,
 } from "@/lib/order-period";
+import { getBrasiliaDayRange } from "@/lib/timezone";
 import { HistoricoTable } from "@/components/admin/historico-table";
-import { OrderPeriodFilter } from "@/components/admin/order-period-filter";
+import { OrderHistoryFilters } from "@/components/admin/order-history-filters";
 
 export const dynamic = "force-dynamic";
 
 const VALID_PERIODS = new Set(["today", "week", "month", "all"]);
 
 interface HistoricoPageProps {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; date?: string }>;
 }
 
 export default async function HistoricoPedidosPage({
@@ -22,8 +23,12 @@ export default async function HistoricoPedidosPage({
   const period: OrderPeriod = VALID_PERIODS.has(rawPeriod ?? "")
     ? (rawPeriod as OrderPeriod)
     : "all";
+  const selectedDate = params.date?.trim() || null;
+  const dayRange = selectedDate ? getBrasiliaDayRange(selectedDate) : null;
 
-  const dateFilter = getOrderDateFilter(period);
+  const createdAtFilter = dayRange
+    ? { gte: dayRange.gte, lt: dayRange.lt }
+    : getOrderDateFilter(period);
 
   let orders: Awaited<
     ReturnType<
@@ -38,7 +43,7 @@ export default async function HistoricoPedidosPage({
     orders = await prisma.order.findMany({
       where: {
         status: "COMPLETED",
-        ...(dateFilter ? { createdAt: dateFilter } : {}),
+        ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
       },
       orderBy: { createdAt: "desc" },
       include: {
@@ -80,11 +85,14 @@ export default async function HistoricoPedidosPage({
           Histórico de Pedidos
         </h1>
         <p className="mt-1 text-stone-500">
-          Consulte as comandas finalizadas por período.
+          Consulte as comandas finalizadas por período ou dia específico.
         </p>
       </div>
 
-      <OrderPeriodFilter current={period} />
+      <OrderHistoryFilters
+        currentPeriod={period}
+        selectedDate={dayRange ? selectedDate : null}
+      />
 
       {loadError && (
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">

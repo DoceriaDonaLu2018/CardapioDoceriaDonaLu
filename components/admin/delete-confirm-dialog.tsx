@@ -19,12 +19,26 @@ interface DeleteConfirmDialogProps {
   title: string;
   description: string;
   onConfirm: () => Promise<{ error?: string; success?: boolean }>;
+  confirmLabel?: string;
+  pendingLabel?: string;
+  triggerLabel?: string;
+  triggerClassName?: string;
+  triggerVariant?: "ghost" | "outline" | "destructive" | "default";
+  triggerSize?: "icon" | "default" | "sm";
+  showTrashIcon?: boolean;
 }
 
 export function DeleteConfirmDialog({
   title,
   description,
   onConfirm,
+  confirmLabel = "Excluir",
+  pendingLabel = "Excluindo...",
+  triggerLabel,
+  triggerClassName = "text-red-600 hover:bg-red-50 hover:text-red-700",
+  triggerVariant = "ghost",
+  triggerSize = "icon",
+  showTrashIcon = true,
 }: DeleteConfirmDialogProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,12 +60,16 @@ export function DeleteConfirmDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
-          variant="ghost"
-          size="icon"
-          className="text-red-600 hover:bg-red-50 hover:text-red-700"
-          aria-label="Excluir"
+          variant={triggerVariant}
+          size={triggerSize}
+          className={triggerClassName}
+          aria-label={triggerLabel ?? confirmLabel}
         >
-          <Trash2 className="h-4 w-4" />
+          {showTrashIcon && triggerSize === "icon" ? (
+            <Trash2 className="h-4 w-4" />
+          ) : (
+            triggerLabel ?? confirmLabel
+          )}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
@@ -68,7 +86,7 @@ export function DeleteConfirmDialog({
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline" disabled={isPending}>
-              Cancelar
+              Voltar
             </Button>
           </DialogClose>
           <Button
@@ -79,10 +97,10 @@ export function DeleteConfirmDialog({
             {isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Excluindo...
+                {pendingLabel}
               </>
             ) : (
-              "Excluir"
+              confirmLabel
             )}
           </Button>
         </DialogFooter>

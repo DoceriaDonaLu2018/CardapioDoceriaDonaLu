@@ -14,7 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { createOrder } from "@/app/admin/pedidos/actions";
+import { createOrder, updateOrder } from "@/app/admin/pedidos/actions";
 import { formatPhone, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,12 +28,31 @@ function parseCurrencyInput(value: string): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+function formatAdvanceInput(value: number): string {
+  if (!value || value <= 0) return "";
+  return value.toFixed(2).replace(".", ",");
+}
+
 export type PdvProduct = {
   id: string;
   title: string;
   price: number;
   imageUrl: string;
   categoryName: string;
+};
+
+export type PdvInitialOrder = {
+  id: string;
+  customerName: string;
+  customerPhone: string | null;
+  waiterName: string | null;
+  advancePayment: number;
+  items: {
+    productId: string;
+    title: string;
+    price: number;
+    quantity: number;
+  }[];
 };
 
 type CartLine = {
@@ -45,16 +64,39 @@ type CartLine = {
 
 interface PdvClientProps {
   products: PdvProduct[];
+  initialOrder?: PdvInitialOrder | null;
 }
 
-export function PdvClient({ products }: PdvClientProps) {
+export function PdvClient({ products, initialOrder = null }: PdvClientProps) {
   const [search, setSearch] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [waiterName, setWaiterName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [advanceInput, setAdvanceInput] = useState("");
-  const [showExtraInfo, setShowExtraInfo] = useState(false);
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(
+    initialOrder?.id ?? null
+  );
+  const [customerName, setCustomerName] = useState(
+    initialOrder?.customerName ?? ""
+  );
+  const [waiterName, setWaiterName] = useState(initialOrder?.waiterName ?? "");
+  const [customerPhone, setCustomerPhone] = useState(
+    initialOrder?.customerPhone
+      ? formatPhone(initialOrder.customerPhone)
+      : ""
+  );
+  const [advanceInput, setAdvanceInput] = useState(
+    formatAdvanceInput(initialOrder?.advancePayment ?? 0)
+  );
+  const [showExtraInfo, setShowExtraInfo] = useState(
+    Boolean(
+      initialOrder?.customerPhone || (initialOrder?.advancePayment ?? 0) > 0
+    )
+  );
+  const [cart, setCart] = useState<CartLine[]>(
+    initialOrder?.items.map((item) => ({
+      productId: item.productId,
+      title: item.title,
+      price: item.price,
+      quantity: item.quantity,
+    })) ?? []
+  );
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -135,7 +177,7 @@ export function PdvClient({ products }: PdvClientProps) {
     }
 
     startTransition(async () => {
-      const result = await createOrder({
+      const payload = {
         customerName,
         customerPhone: customerPhone || undefined,
         waiterName: waiterName || undefined,
@@ -143,8 +185,13 @@ export function PdvClient({ products }: PdvClientProps) {
         items: cart.map((line) => ({
           productId: line.productId,
           quantity: line.quantity,
+          unitPrice: line.price,
         })),
-      });
+      };
+
+      const result = editingOrderId
+        ? await updateOrder({ ...payload, orderId: editingOrderId })
+        : await createOrder(payload);
 
       if (result.error) {
         setError(result.error);
@@ -152,7 +199,9 @@ export function PdvClient({ products }: PdvClientProps) {
       }
 
       setSuccessMessage(
-        "Pedido enviado para a cozinha! Aguarde a impressão na aba Pedidos."
+        editingOrderId
+          ? "Pedido atualizado e reenviado para a cozinha!"
+          : "Pedido enviado para a cozinha! Aguarde a impressão na aba Pedidos."
       );
       setCart([]);
       setCustomerName("");
@@ -160,6 +209,7 @@ export function PdvClient({ products }: PdvClientProps) {
       setCustomerPhone("");
       setAdvanceInput("");
       setShowExtraInfo(false);
+      setEditingOrderId(null);
     });
   }
 
@@ -231,6 +281,12 @@ export function PdvClient({ products }: PdvClientProps) {
               </span>
             )}
           </div>
+
+          {editingOrderId && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Editando pedido reaberto. Ajuste os itens e reenvie a comanda.
+            </p>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="customerName">Nome do cliente</Label>
@@ -442,6 +498,8 @@ export function PdvClient({ products }: PdvClientProps) {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Enviando...
               </>
+            ) : editingOrderId ? (
+              "Atualizar Pedido"
             ) : (
               "Enviar Pedido"
             )}
