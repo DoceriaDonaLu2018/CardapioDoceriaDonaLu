@@ -4,7 +4,7 @@ import { FichaTecnicaClient } from "./ficha-tecnica-client";
 export const dynamic = "force-dynamic";
 
 export default async function FichaTecnicaPage() {
-  const [products, ingredients] = await Promise.all([
+  const [products, ingredients, categories] = await Promise.all([
     prisma.product.findMany({
       where: { isDeleted: false },
       orderBy: { title: "asc" },
@@ -14,6 +14,7 @@ export default async function FichaTecnicaPage() {
         price: true,
         pricingStrategy: true,
         pricingValue: true,
+        categoryId: true,
         recipeItems: {
           select: {
             quantityUsed: true,
@@ -40,6 +41,10 @@ export default async function FichaTecnicaPage() {
         unit: true,
       },
     }),
+    prisma.category.findMany({
+      orderBy: { order: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
 
   return (
@@ -54,7 +59,11 @@ export default async function FichaTecnicaPage() {
         </p>
       </div>
 
-      <FichaTecnicaClient products={products} ingredients={ingredients} />
+      <FichaTecnicaClient
+        products={products}
+        ingredients={ingredients}
+        categories={categories}
+      />
     </div>
   );
 }

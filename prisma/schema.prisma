@@ -76,7 +76,7 @@ model Order {
   customerName   String
   customerPhone  String? // WhatsApp da encomenda (opcional)
   waiterName     String?
-  status         String      @default("PENDING") // PENDING | COMPLETED
+  status         String      @default("PENDING") // PENDING | COMPLETED | CANCELED
   totalAmount    Float
   advancePayment Float       @default(0) // sinal pago antecipadamente
   items          OrderItem[]
