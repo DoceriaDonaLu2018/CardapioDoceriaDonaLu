@@ -3,11 +3,14 @@ import type { NextRequest } from "next/server";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { KITCHEN_VISIBLE_STATUSES } from "@/lib/orders/constants";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Short-polling de pedidos pendentes.
+ * Short-polling de pedidos prontos para a cozinha.
+ * REGRA DE OURO: ignora AWAITING_PAYMENT — só PENDING (PDV) e PAID (PIX confirmado).
+ *
  * - `?countOnly=1` → só a contagem (badge da sidebar; query leve).
  * - sem param → lista completa (painel de recepção / auto-impressão).
  */
@@ -21,16 +24,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     request.nextUrl.searchParams.get("countOnly") === "1" ||
     request.nextUrl.searchParams.get("countOnly") === "true";
 
+  const kitchenWhere = {
+    status: { in: [...KITCHEN_VISIBLE_STATUSES] },
+  };
+
   try {
     if (countOnly) {
       const count = await prisma.order.count({
-        where: { status: "PENDING" },
+        where: kitchenWhere,
       });
       return NextResponse.json({ count, orders: [] });
     }
 
     const orders = await prisma.order.findMany({
-      where: { status: "PENDING" },
+      where: kitchenWhere,
       orderBy: { createdAt: "asc" },
       select: {
         id: true,
@@ -40,6 +47,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         createdAt: true,
         totalAmount: true,
         advancePayment: true,
+        status: true,
+        source: true,
+        deliveryAddress: true,
         items: {
           select: {
             quantity: true,
@@ -59,6 +69,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       createdAt: order.createdAt.toISOString(),
       totalAmount: order.totalAmount,
       advancePayment: order.advancePayment,
+      status: order.status,
+      source: order.source,
+      deliveryAddress: order.deliveryAddress,
       items: order.items.map((item) => ({
         quantity: item.quantity,
         priceAtTime: item.priceAtTime,

@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
+import { KITCHEN_VISIBLE_STATUSES } from "@/lib/orders/constants";
 
 export type OrderActionState = {
   error?: string;
@@ -146,6 +147,7 @@ export async function createOrder(
         customerPhone,
         waiterName,
         status: "PENDING",
+        source: "PDV",
         totalAmount,
         advancePayment,
         items: { create: orderItems },
@@ -185,10 +187,20 @@ export async function completeOrder(orderId: string): Promise<OrderActionState> 
   }
 
   try {
-    await prisma.order.update({
-      where: { id: orderId },
+    const result = await prisma.order.updateMany({
+      where: {
+        id: orderId,
+        status: { in: [...KITCHEN_VISIBLE_STATUSES] },
+      },
       data: { status: "COMPLETED" },
     });
+
+    if (result.count === 0) {
+      return {
+        error:
+          "Só é possível concluir pedidos pagos (PIX) ou pendentes do balcão.",
+      };
+    }
 
     revalidateOrders();
 
@@ -253,6 +265,12 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
     if (!existing) return { error: "Pedido não encontrado." };
     if (existing.status === "COMPLETED") {
       return { error: "Pedidos concluídos não podem ser reabertos." };
+    }
+    if (existing.status === "AWAITING_PAYMENT") {
+      return {
+        error:
+          "Pedidos aguardando PIX não podem ser reabertos no PDV. Cancele ou aguarde o pagamento.",
+      };
     }
 
     await prisma.order.update({

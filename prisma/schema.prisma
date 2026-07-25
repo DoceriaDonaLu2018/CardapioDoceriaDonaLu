@@ -72,19 +72,49 @@ model RecipeItem {
 }
 
 model Order {
-  id             String      @id @default(cuid())
-  customerName   String
-  customerPhone  String? // WhatsApp da encomenda (opcional)
-  waiterName     String?
-  status         String      @default("PENDING") // PENDING | COMPLETED | CANCELED
-  totalAmount    Float
-  advancePayment Float       @default(0) // sinal pago antecipadamente
-  items          OrderItem[]
-  createdAt      DateTime    @default(now())
+  id                 String      @id @default(cuid())
+  customerName       String
+  customerPhone      String? // WhatsApp da encomenda (opcional)
+  customerEmail      String? // obrigatório no checkout online (payer PIX)
+  waiterName         String?
+  // State machine:
+  // PDV: PENDING → COMPLETED | CANCELED
+  // Online PIX: AWAITING_PAYMENT → PAID → COMPLETED | CANCELED
+  // Cozinha NUNCA vê AWAITING_PAYMENT — só PENDING (balcão) e PAID (pago online).
+  status             String      @default("PENDING")
+  source             String      @default("PDV") // PDV | ONLINE
+  totalAmount        Float
+  advancePayment     Float       @default(0) // sinal pago antecipadamente (PDV)
+  deliveryAddress    String?
+  deliveryNotes      String?
+  // Integração gateway (Mercado Pago PIX)
+  paymentId          String?     @unique // ID do pagamento no gateway
+  paymentProvider    String? // mercadopago
+  paymentMethod      String? // pix
+  pixCopyPaste       String?     @db.Text
+  pixQrCodeBase64    String?     @db.Text
+  // Token opaco para o cliente consultar status / ver QR sem login (não é secret do gateway).
+  paymentAccessToken String?     @unique
+  paidAt             DateTime?
+  items              OrderItem[]
+  createdAt          DateTime    @default(now())
 
   @@index([createdAt])
   @@index([status])
+  @@index([source])
   @@map("orders")
+}
+
+/// Idempotência de webhooks: cada evento do gateway é processado no máximo uma vez.
+model PaymentWebhookEvent {
+  id        String   @id // ex.: "mp:payment:123456789" ou id da notificação
+  paymentId String?
+  orderId   String?
+  createdAt DateTime @default(now())
+
+  @@index([paymentId])
+  @@index([orderId])
+  @@map("payment_webhook_events")
 }
 
 model OrderItem {

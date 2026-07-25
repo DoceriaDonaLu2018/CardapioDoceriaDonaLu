@@ -387,9 +387,19 @@ export function PedidosBoard() {
                         Garçom/Mesa: {order.waiterName}
                       </p>
                     )}
+                    {order.source === "ONLINE" && (
+                      <p className="mt-0.5 text-xs font-medium text-green-700">
+                        PIX online confirmado
+                      </p>
+                    )}
                     {order.customerPhone && (
                       <p className="mt-0.5 text-xs text-stone-500">
                         WhatsApp: {formatPhone(order.customerPhone)}
+                      </p>
+                    )}
+                    {order.deliveryAddress && (
+                      <p className="mt-0.5 text-xs text-stone-500">
+                        Entrega: {order.deliveryAddress}
                       </p>
                     )}
                     <p className="mt-0.5 font-mono text-xs text-stone-400">

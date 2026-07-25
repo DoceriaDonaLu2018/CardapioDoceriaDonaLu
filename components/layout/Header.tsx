@@ -5,6 +5,7 @@ import { CakeSlice, Menu } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useScrollSpy } from "@/hooks/use-scroll-spy";
+import { CartButton } from "@/components/cart/cart-button";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -22,11 +23,11 @@ export interface HeaderCategory {
 
 interface HeaderProps {
   categories: HeaderCategory[];
+  showCart?: boolean;
 }
 
-export function Header({ categories }: HeaderProps) {
+export function Header({ categories, showCart = false }: HeaderProps) {
   const [open, setOpen] = useState(false);
-  // Estabiliza a referência para o IntersectionObserver não reiniciar a cada render.
   const sectionIds = useMemo(
     () => categories.map((category) => category.id),
     [categories]
@@ -35,7 +36,6 @@ export function Header({ categories }: HeaderProps) {
 
   function handleNavigate(id: string) {
     setOpen(false);
-    // Aguarda o fechamento do Sheet antes de rolar suavemente até a seção.
     window.setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
     }, 150);
@@ -43,8 +43,7 @@ export function Header({ categories }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-stone-200 bg-white/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80">
-      <div className="container relative flex h-16 items-center">
-        {/* Lado esquerdo: Hamburger Menu */}
+      <div className="container relative flex h-16 items-center justify-between">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <Button
@@ -98,12 +97,19 @@ export function Header({ categories }: HeaderProps) {
           </SheetContent>
         </Sheet>
 
-        {/* Centro: Nome da doceria */}
         <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-2">
           <CakeSlice className="h-6 w-6 text-coffee-600" />
           <span className="font-serif text-xl font-semibold tracking-wide text-stone-800 sm:text-2xl">
             Doceria Dona Lu
           </span>
+        </div>
+
+        <div className="flex items-center justify-end">
+          {showCart ? (
+            <CartButton />
+          ) : (
+            <span className="h-10 w-10" aria-hidden />
+          )}
         </div>
       </div>
     </header>

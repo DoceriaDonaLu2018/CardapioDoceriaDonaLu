@@ -10,6 +10,9 @@ export type PendingOrder = {
   createdAt: string;
   totalAmount: number;
   advancePayment: number;
+  status?: string;
+  source?: string;
+  deliveryAddress?: string | null;
   items: {
     quantity: number;
     priceAtTime: number;
