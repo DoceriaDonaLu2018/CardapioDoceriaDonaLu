@@ -1,4 +1,3 @@
-import nextDynamic from "next/dynamic";
 import {
   CalendarDays,
   CalendarRange,
@@ -16,39 +15,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CategorySalesList } from "@/components/admin/category-sales-list";
+import {
+  TopProductsChart,
+  WeeklyEvolutionChart,
+} from "@/components/admin/dashboard-charts-lazy";
 
 export const dynamic = "force-dynamic";
-
-/** Recharts só no client — reduz JS inicial do dashboard. */
-const TopProductsChart = nextDynamic(
-  () =>
-    import("@/components/admin/dashboard-charts").then(
-      (mod) => mod.TopProductsChart
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[280px] items-center justify-center text-sm text-stone-400">
-        Carregando gráfico…
-      </div>
-    ),
-  }
-);
-
-const WeeklyEvolutionChart = nextDynamic(
-  () =>
-    import("@/components/admin/dashboard-charts").then(
-      (mod) => mod.WeeklyEvolutionChart
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[180px] items-center justify-center text-sm text-stone-400">
-        Carregando gráfico…
-      </div>
-    ),
-  }
-);
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
