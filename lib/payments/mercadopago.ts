@@ -67,6 +67,9 @@ export function mapMercadoPagoError(raw: string): string {
   if (msg.includes("unauthorized") || msg.includes("invalid access token")) {
     return "Access Token do Mercado Pago inválido ou ausente. Verifique MERCADOPAGO_ACCESS_TOKEN no Vercel.";
   }
+  if (msg.includes("public_key") || msg.includes("public key")) {
+    return "Public Key do Mercado Pago inválida. Verifique NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY (mesmo modo do Access Token).";
+  }
   return raw;
 }
 
@@ -124,7 +127,7 @@ function paymentMethodsForChoice(choice: CheckoutProPaymentChoice) {
  */
 export async function createCheckoutProPreference(
   input: CreateCheckoutProPreferenceInput
-): Promise<{ checkoutUrl: string }> {
+): Promise<{ checkoutUrl: string; preferenceId: string }> {
   const token = getAccessToken();
   const base = getAppBaseUrl();
 
@@ -210,7 +213,10 @@ export async function createCheckoutProPreference(
     throw new Error("Mercado Pago não retornou a URL de checkout.");
   }
 
-  return { checkoutUrl };
+  return {
+    preferenceId: data.id,
+    checkoutUrl,
+  };
 }
 
 /** Reconsulta o pagamento no gateway (fonte da verdade — não confiar só no webhook). */

@@ -68,6 +68,9 @@ export default async function PagarPedidoPage({
     );
   }
 
+  const publicKey =
+    process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY?.trim() || null;
+
   return (
     <div className="min-h-screen bg-stone-50 py-10">
       <div className="container">
@@ -76,6 +79,7 @@ export default async function PagarPedidoPage({
           accessToken={order.paymentAccessToken}
           totalAmount={order.totalAmount}
           customerName={order.customerName}
+          publicKey={publicKey}
         />
       </div>
     </div>

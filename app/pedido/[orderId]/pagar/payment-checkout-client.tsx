@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import {
   CreditCard,
-  ExternalLink,
   Loader2,
   Lock,
   QrCode,
@@ -15,6 +14,7 @@ import { startCheckoutProPayment } from "@/app/checkout/actions";
 import { formatPrice } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { MercadoPagoWalletBrick } from "./mercadopago-wallet-brick";
 
 type PaymentChoice = "pix" | "card";
 
@@ -23,6 +23,7 @@ type Props = {
   accessToken: string;
   totalAmount: number;
   customerName: string;
+  publicKey: string | null;
 };
 
 export function PaymentCheckoutClient({
@@ -30,14 +31,32 @@ export function PaymentCheckoutClient({
   accessToken,
   totalAmount,
   customerName,
+  publicKey,
 }: Props) {
   const [choice, setChoice] = useState<PaymentChoice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [preferenceId, setPreferenceId] = useState<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
 
-  function goToMercadoPago() {
+  function selectChoice(next: PaymentChoice) {
+    setChoice(next);
+    setError(null);
+    // Trocar PIX ↔ cartão exige nova preferência.
+    setPreferenceId(null);
+    setCheckoutUrl(null);
+  }
+
+  function prepareCheckout() {
     if (!choice) {
       setError("Escolha PIX ou cartão para continuar.");
+      return;
+    }
+
+    if (!publicKey) {
+      setError(
+        "Pagamento indisponível: NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY não configurada no Vercel."
+      );
       return;
     }
 
@@ -52,12 +71,14 @@ export function PaymentCheckoutClient({
         setError(result.error);
         return;
       }
-      window.location.assign(result.checkoutUrl);
+      setPreferenceId(result.preferenceId);
+      setCheckoutUrl(result.checkoutUrl);
     });
   }
 
   const firstName = customerName.split(" ")[0] || "cliente";
   const shortId = orderId.slice(-8).toUpperCase();
+  const showWallet = Boolean(preferenceId && checkoutUrl && publicKey);
 
   return (
     <div className="mx-auto max-w-md">
@@ -73,8 +94,8 @@ export function PaymentCheckoutClient({
             Como você quer pagar?
           </h1>
           <p className="mt-3 text-stone-500">
-            Olá, {firstName}. Escolha o meio de pagamento e continue no Mercado
-            Pago. Depois você volta automaticamente para cá.
+            Olá, {firstName}. Escolha o meio e pague com o botão oficial do
+            Mercado Pago. Depois você volta automaticamente para cá.
           </p>
         </div>
 
@@ -95,10 +116,7 @@ export function PaymentCheckoutClient({
           <button
             type="button"
             disabled={isPending}
-            onClick={() => {
-              setChoice("pix");
-              setError(null);
-            }}
+            onClick={() => selectChoice("pix")}
             className={cn(
               "flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition",
               choice === "pix"
@@ -120,10 +138,7 @@ export function PaymentCheckoutClient({
           <button
             type="button"
             disabled={isPending}
-            onClick={() => {
-              setChoice("card");
-              setError(null);
-            }}
+            onClick={() => selectChoice("card")}
             className={cn(
               "flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition",
               choice === "card"
@@ -152,27 +167,34 @@ export function PaymentCheckoutClient({
         )}
 
         <div className="mt-6 space-y-3">
-          <Button
-            type="button"
-            disabled={isPending || !choice}
-            onClick={goToMercadoPago}
-            className="h-12 w-full bg-coffee-600 text-white hover:bg-coffee-700 disabled:opacity-50"
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Abrindo Mercado Pago…
-              </>
-            ) : (
-              <>
-                <ExternalLink className="h-4 w-4" />
-                Continuar no Mercado Pago
-              </>
-            )}
-          </Button>
+          {!showWallet ? (
+            <Button
+              type="button"
+              disabled={isPending || !choice}
+              onClick={prepareCheckout}
+              className="h-12 w-full bg-coffee-600 text-white hover:bg-coffee-700 disabled:opacity-50"
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Preparando pagamento…
+                </>
+              ) : (
+                "Continuar para pagar"
+              )}
+            </Button>
+          ) : (
+            <MercadoPagoWalletBrick
+              publicKey={publicKey!}
+              preferenceId={preferenceId!}
+              checkoutUrl={checkoutUrl!}
+            />
+          )}
+
           <p className="flex items-center justify-center gap-1.5 text-center text-xs text-stone-400">
             <ShieldCheck className="h-3.5 w-3.5" />
-            O pagamento é feito no site do Mercado Pago.
+            Botão oficial do Mercado Pago (SDK) — dados sensíveis não passam
+            pelo nosso site.
           </p>
           <Button asChild variant="outline" className="h-11 w-full">
             <Link href="/">Voltar ao cardápio</Link>

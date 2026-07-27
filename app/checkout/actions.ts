@@ -205,11 +205,13 @@ export async function createOnlineOrder(
 
 /**
  * Cria a preferência Checkout Pro conforme a escolha (PIX ou cartão)
- * e devolve a URL do Mercado Pago.
+ * e devolve preferenceId + URL para o Wallet Brick / redirect.
  */
 export async function startCheckoutProPayment(
   rawInput: unknown
-): Promise<ActionOk<{ checkoutUrl: string }> | ActionErr> {
+): Promise<
+  ActionOk<{ preferenceId: string; checkoutUrl: string }> | ActionErr
+> {
   const parsed = checkoutProPaySchema.safeParse(rawInput);
   if (!parsed.success) {
     return { success: false, error: "Escolha PIX ou cartão para continuar." };
@@ -270,7 +272,11 @@ export async function startCheckoutProPayment(
       },
     });
 
-    return { success: true, checkoutUrl: preference.checkoutUrl };
+    return {
+      success: true,
+      preferenceId: preference.preferenceId,
+      checkoutUrl: preference.checkoutUrl,
+    };
   } catch (error) {
     console.error("startCheckoutProPayment:", error);
     return {
