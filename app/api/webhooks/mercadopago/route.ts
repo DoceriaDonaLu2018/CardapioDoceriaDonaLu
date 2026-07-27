@@ -4,53 +4,182 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { OrderStatus } from "@/lib/orders/constants";
 import {
-  fetchMercadoPagoPayment,
-  verifyMercadoPagoWebhookSignature,
-} from "@/lib/payments/mercadopago";
+  applyMercadoPagoPaymentId,
+  fetchMerchantOrderPaymentIds,
+} from "@/lib/payments/apply-approved-payment";
+import { verifyMercadoPagoWebhookSignature } from "@/lib/payments/mercadopago";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Webhook Mercado Pago — área de maior risco (AppSec).
+ * Webhook Mercado Pago — Checkout Pro.
  *
- * Camadas:
- * 1) Assinatura HMAC (x-signature) — rejeita origem falsa (401)
- * 2) Zod no payload — rejeita body malformado (400)
- * 3) Idempotência — PaymentWebhookEvent + update condicional
- * 4) Revalidação no gateway — amount/status/external_reference oficiais
+ * BUG CRÍTICO CORRIGIDO:
+ * Antes gravávamos PaymentWebhookEvent no status `pending`. Quando o MP
+ * reenviava o mesmo payment_id já `approved`, o handler abortava como
+ * "duplicate" e o pedido ficava eterno em AWAITING_PAYMENT (fora do painel).
+ *
+ * Agora:
+ * - Sempre reconsulta GET /v1/payments/{id} (fonte da verdade)
+ * - Só marca evento como "aplicado" após approved processado (ou terminal)
+ * - Se o evento existir mas o pedido ainda aguarda, REPROCESSA
+ * - Aceita topic payment + merchant_order (Checkout Pro)
+ * - Body vazio / não-JSON não derruba a notificação (id na query)
  */
 
-const webhookBodySchema = z.object({
-  id: z.union([z.string(), z.number()]).optional(),
-  type: z.string().optional(),
-  action: z.string().optional(),
-  data: z
-    .object({
-      id: z.union([z.string(), z.number()]),
-    })
-    .optional(),
-  live_mode: z.boolean().optional(),
-});
+const webhookBodySchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional(),
+    type: z.string().optional(),
+    action: z.string().optional(),
+    topic: z.string().optional(),
+    data: z
+      .object({
+        id: z.union([z.string(), z.number()]),
+      })
+      .optional(),
+    live_mode: z.boolean().optional(),
+  })
+  .passthrough();
 
-function amountsMatch(a: number, b: number): boolean {
-  return Math.abs(a - b) < 0.02; // tolerância de 2 centavos (float)
+function eventKeyForPayment(paymentId: string): string {
+  return `mp:payment:${paymentId}`;
+}
+
+async function markPaymentEvent(
+  paymentId: string,
+  orderId: string | null,
+  applied: boolean
+): Promise<void> {
+  const id = eventKeyForPayment(paymentId);
+  try {
+    await prisma.paymentWebhookEvent.upsert({
+      where: { id },
+      create: {
+        id,
+        paymentId,
+        orderId,
+      },
+      update: {
+        paymentId,
+        orderId: orderId ?? undefined,
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return;
+    }
+    throw error;
+  }
+  // `applied` reservado para logs futuros / schema; upsert já idempotente.
+  void applied;
+}
+
+async function processPaymentId(paymentId: string): Promise<{
+  ok: boolean;
+  result: string;
+  orderId?: string;
+  retryable?: boolean;
+}> {
+  const existing = await prisma.paymentWebhookEvent.findUnique({
+    where: { id: eventKeyForPayment(paymentId) },
+    select: { id: true, orderId: true },
+  });
+
+  // Se já processamos e o pedido está PAID/COMPLETED, não refaz trabalho.
+  if (existing?.orderId) {
+    const order = await prisma.order.findUnique({
+      where: { id: existing.orderId },
+      select: { status: true },
+    });
+    if (order?.status === "PAID" || order?.status === "COMPLETED") {
+      return { ok: true, result: "duplicate_paid", orderId: existing.orderId };
+    }
+    // Evento existe mas pedido ainda NÃO está pago → continua (fix do bug).
+  }
+
+  let outcome;
+  try {
+    outcome = await applyMercadoPagoPaymentId(paymentId);
+  } catch (error) {
+    console.error("webhook apply payment:", paymentId, error);
+    return { ok: false, result: "gateway_error", retryable: true };
+  }
+
+  switch (outcome.outcome) {
+    case "paid":
+    case "already_paid": {
+      await markPaymentEvent(outcome.paymentId, outcome.orderId, true);
+      return {
+        ok: true,
+        result: outcome.outcome,
+        orderId: outcome.orderId,
+      };
+    }
+    case "pending": {
+      // NÃO trava o payment_id — o MP reenviará quando approved.
+      console.info("webhook payment still pending", {
+        paymentId: outcome.paymentId,
+        status: outcome.status,
+        orderId: outcome.orderId,
+      });
+      return {
+        ok: true,
+        result: "pending",
+        orderId: outcome.orderId ?? undefined,
+      };
+    }
+    case "rejected": {
+      await markPaymentEvent(outcome.paymentId, outcome.orderId, true);
+      return {
+        ok: true,
+        result: "rejected",
+        orderId: outcome.orderId ?? undefined,
+      };
+    }
+    case "amount_mismatch": {
+      // Não ACK permanente: devolve 5xx para o MP retentar após correção.
+      console.error("webhook amount mismatch — pedido NÃO promovido", outcome);
+      return {
+        ok: false,
+        result: "amount_mismatch",
+        orderId: outcome.orderId,
+        retryable: true,
+      };
+    }
+    case "unmatched": {
+      console.warn("webhook unmatched payment", outcome);
+      await markPaymentEvent(outcome.paymentId, null, true);
+      return { ok: true, result: "unmatched" };
+    }
+    default:
+      return { ok: true, result: "ignored" };
+  }
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const xSignature = request.headers.get("x-signature");
   const xRequestId = request.headers.get("x-request-id");
 
-  // data.id pode vir na query (padrão MP) ou no body.
-  const queryDataId = request.nextUrl.searchParams.get("data.id");
+  // IDs: query (padrão MP) ou body. Legacy IPN: ?id=&topic=
+  const queryDataId =
+    request.nextUrl.searchParams.get("data.id") ||
+    request.nextUrl.searchParams.get("id");
 
-  let rawBody: unknown;
+  let rawBody: unknown = {};
   try {
-    rawBody = await request.json();
+    const text = await request.text();
+    if (text.trim()) {
+      rawBody = JSON.parse(text) as unknown;
+    }
   } catch {
-    return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
+    // Body vazio / form — segue com query params.
+    rawBody = {};
   }
 
   const parsedBody = webhookBodySchema.safeParse(rawBody);
@@ -61,10 +190,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const bodyDataId =
     parsedBody.data.data?.id != null
       ? String(parsedBody.data.data.id)
-      : null;
+      : parsedBody.data.id != null
+        ? String(parsedBody.data.id)
+        : null;
+
   const dataId = (queryDataId || bodyDataId || "").trim() || null;
 
-  // PROTEÇÃO 1 — assinatura criptográfica obrigatória.
   let signatureOk = false;
   try {
     signatureOk = verifyMercadoPagoWebhookSignature({
@@ -84,168 +215,80 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.warn("Webhook MP rejeitado: assinatura inválida.", {
       xRequestId,
       dataId,
+      hasSignature: Boolean(xSignature),
     });
     return NextResponse.json({ error: "Assinatura inválida." }, { status: 401 });
   }
 
-  // Notificações que não são de payment: ACK sem processar.
-  const topic =
+  const topicRaw =
     request.nextUrl.searchParams.get("type") ||
     request.nextUrl.searchParams.get("topic") ||
     parsedBody.data.type ||
+    parsedBody.data.topic ||
     "";
+  const topic = topicRaw.toLowerCase();
 
-  if (topic && topic !== "payment") {
-    return NextResponse.json({ ok: true, ignored: true });
+  // Merchant order (Checkout Pro): resolve payment IDs internos.
+  const isMerchantOrder =
+    topic.includes("merchant_order") || topic === "topic_merchant_order_wh";
+
+  if (isMerchantOrder) {
+    if (!dataId) {
+      return NextResponse.json({ error: "merchant_order id ausente." }, { status: 400 });
+    }
+
+    let paymentIds: string[];
+    try {
+      paymentIds = await fetchMerchantOrderPaymentIds(dataId);
+    } catch (error) {
+      console.error("webhook merchant_order fetch:", error);
+      return NextResponse.json(
+        { error: "Falha ao validar merchant_order." },
+        { status: 502 }
+      );
+    }
+
+    const results = [];
+    for (const paymentId of paymentIds) {
+      const r = await processPaymentId(paymentId);
+      results.push({ paymentId, ...r });
+      if (r.retryable) {
+        return NextResponse.json(
+          { error: "Falha temporária ao aplicar pagamento.", results },
+          { status: 502 }
+        );
+      }
+    }
+
+    return NextResponse.json({ ok: true, topic: "merchant_order", results });
+  }
+
+  // Tópicos que não processamos: ACK 200 (evita retentativas infinitas).
+  if (
+    topic &&
+    topic !== "payment" &&
+    !topic.includes("payment")
+  ) {
+    return NextResponse.json({ ok: true, ignored: true, topic });
   }
 
   if (!dataId) {
     return NextResponse.json({ error: "data.id ausente." }, { status: 400 });
   }
 
-  const eventKey = `mp:payment:${dataId}`;
-
-  // PROTEÇÃO 2 — idempotência: se já processamos este evento, 200 silencioso.
-  const already = await prisma.paymentWebhookEvent.findUnique({
-    where: { id: eventKey },
-    select: { id: true },
-  });
-  if (already) {
-    return NextResponse.json({ ok: true, duplicate: true });
-  }
-
-  // Fonte da verdade: busca o pagamento no MP (não confiar no body).
-  let payment;
-  try {
-    payment = await fetchMercadoPagoPayment(dataId);
-  } catch (error) {
-    console.error("webhook fetch payment:", error);
+  const processed = await processPaymentId(dataId);
+  if (processed.retryable) {
     return NextResponse.json(
-      { error: "Falha ao validar pagamento no gateway." },
+      { error: "Falha temporária ao aplicar pagamento.", ...processed },
       { status: 502 }
     );
   }
 
-  // Só promove o pedido quando o gateway confirma approved.
-  if (payment.status !== "approved") {
-    // Registra o evento mesmo assim para não reprocessar spam do mesmo id.
-    await prisma.paymentWebhookEvent.create({
-      data: {
-        id: eventKey,
-        paymentId: payment.id,
-        orderId: payment.externalReference,
-      },
-    });
-    return NextResponse.json({
-      ok: true,
-      status: payment.status,
-      pending: true,
-    });
-  }
-
-  const orderId = payment.externalReference?.trim();
-  if (!orderId) {
-    await prisma.paymentWebhookEvent.create({
-      data: { id: eventKey, paymentId: payment.id },
-    });
-    return NextResponse.json({ ok: true, unmatched: true });
-  }
-
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      status: true,
-      totalAmount: true,
-      paymentId: true,
-    },
+  return NextResponse.json({
+    ok: processed.ok,
+    result: processed.result,
+    orderId: processed.orderId,
   });
-
-  if (!order) {
-    await prisma.paymentWebhookEvent.create({
-      data: { id: eventKey, paymentId: payment.id, orderId },
-    });
-    return NextResponse.json({ ok: true, orderMissing: true });
-  }
-
-  // Anti-fraude: valor pago deve bater com o total persistido no banco.
-  if (!amountsMatch(payment.amount, order.totalAmount)) {
-    console.error("Webhook amount mismatch", {
-      orderId,
-      expected: order.totalAmount,
-      got: payment.amount,
-    });
-    return NextResponse.json(
-      { error: "Valor do pagamento não confere." },
-      { status: 409 }
-    );
-  }
-
-  // Se já está pago com outro paymentId, rejeita. Se ainda aguarda, aceita novo id (retry Checkout Pro).
-  if (
-    order.paymentId &&
-    order.paymentId !== payment.id &&
-    (order.status === OrderStatus.PAID ||
-      order.status === OrderStatus.COMPLETED)
-  ) {
-    console.error("Webhook paymentId mismatch on paid order", {
-      orderId,
-      expected: order.paymentId,
-      got: payment.id,
-    });
-    return NextResponse.json(
-      { error: "Pagamento não corresponde ao pedido." },
-      { status: 409 }
-    );
-  }
-
-  // Transação atômica: marca evento + promove AWAITING_PAYMENT → PAID.
-  try {
-    await prisma.$transaction(async (tx) => {
-      await tx.paymentWebhookEvent.create({
-        data: {
-          id: eventKey,
-          paymentId: payment.id,
-          orderId: order.id,
-        },
-      });
-
-      // Idempotência no pedido: se já estiver PAID/COMPLETED, não altera.
-      if (
-        order.status === OrderStatus.PAID ||
-        order.status === OrderStatus.COMPLETED
-      ) {
-        return;
-      }
-
-      if (order.status !== OrderStatus.AWAITING_PAYMENT) {
-        // Não promove pedidos cancelados / PDV etc.
-        return;
-      }
-
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: OrderStatus.PAID,
-          paymentId: payment.id,
-          paymentMethod: payment.paymentMethodId ?? "checkout_pro",
-          paidAt: new Date(),
-        },
-      });
-    });
-  } catch (error) {
-    // Corrida entre webhooks duplicados: unique em PaymentWebhookEvent.
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
-      return NextResponse.json({ ok: true, duplicate: true });
-    }
-    throw error;
-  }
-
-  // A partir daqui o pedido PAID entra no painel da cozinha (filtro PENDING|PAID).
-  return NextResponse.json({ ok: true, paid: true, orderId: order.id });
 }
 
 /** MP às vezes envia GET de verificação — responde 200. */

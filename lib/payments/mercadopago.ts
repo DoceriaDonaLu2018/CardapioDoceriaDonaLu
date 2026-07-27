@@ -278,8 +278,9 @@ export function verifyMercadoPagoWebhookSignature(params: {
 
   const tsMs = Number(ts);
   if (Number.isFinite(tsMs)) {
+    // MP recomenda validar ts; janela folgada evita falso 401 por skew de relógio.
     const skew = Math.abs(Date.now() - tsMs);
-    if (skew > 5 * 60 * 1000) return false;
+    if (skew > 15 * 60 * 1000) return false;
   }
 
   let manifest = "";

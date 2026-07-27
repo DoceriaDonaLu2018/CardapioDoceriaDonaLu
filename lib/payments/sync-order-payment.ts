@@ -1,14 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { OrderStatus } from "@/lib/orders/constants";
-import { fetchMercadoPagoPayment } from "@/lib/payments/mercadopago";
-
-function amountsMatch(a: number, b: number): boolean {
-  return Math.abs(a - b) < 0.02;
-}
+import { applyMercadoPagoPaymentId } from "@/lib/payments/apply-approved-payment";
 
 /**
  * Quando o cliente volta do Checkout Pro, o webhook pode atrasar.
- * Reconsulta o pagamento no gateway e promove o pedido se estiver approved.
+ * Reconsulta o gateway e promove o pedido se estiver approved.
  */
 export async function syncOrderPaymentFromGateway(params: {
   orderId: string;
@@ -24,7 +20,6 @@ export async function syncOrderPaymentFromGateway(params: {
     select: {
       id: true,
       status: true,
-      totalAmount: true,
     },
   });
 
@@ -39,34 +34,25 @@ export async function syncOrderPaymentFromGateway(params: {
     return { status: "approved", paid: true };
   }
 
-  const payment = await fetchMercadoPagoPayment(params.paymentId);
+  const result = await applyMercadoPagoPaymentId(params.paymentId);
 
-  if (
-    payment.externalReference &&
-    payment.externalReference !== order.id
-  ) {
-    throw new Error("Pagamento não corresponde a este pedido.");
+  if (result.outcome === "paid" || result.outcome === "already_paid") {
+    if (result.orderId !== order.id) {
+      throw new Error("Pagamento não corresponde a este pedido.");
+    }
+    return { status: "approved", paid: true };
   }
 
-  if (!amountsMatch(payment.amount, order.totalAmount)) {
+  if (result.outcome === "amount_mismatch") {
     throw new Error("Valor do pagamento não confere com o pedido.");
   }
 
-  if (payment.status === "approved") {
-    await prisma.order.updateMany({
-      where: {
-        id: order.id,
-        status: OrderStatus.AWAITING_PAYMENT,
-      },
-      data: {
-        status: OrderStatus.PAID,
-        paymentId: payment.id,
-        paymentMethod: payment.paymentMethodId ?? "checkout_pro",
-        paidAt: new Date(),
-      },
-    });
-    return { status: payment.status, paid: true };
+  if (result.outcome === "unmatched") {
+    throw new Error(result.reason || "Pagamento não corresponde a este pedido.");
   }
 
-  return { status: payment.status, paid: false };
+  return {
+    status: result.status,
+    paid: false,
+  };
 }
