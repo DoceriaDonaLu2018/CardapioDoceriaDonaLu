@@ -10,8 +10,25 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "image/gif",
 ]);
 
-// Limite seguro para Vercel Serverless (body máx. ~4.5 MB).
 const MAX_SIZE_IN_BYTES = 4 * 1024 * 1024;
+
+/** Nome seguro para Blob — remove path e caracteres perigosos. */
+function safeUploadName(original: string, contentType: string): string {
+  const base = original.split(/[/\\]/).pop() || "upload";
+  const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+  const extFromType =
+    contentType === "image/jpeg"
+      ? ".jpg"
+      : contentType === "image/png"
+        ? ".png"
+        : contentType === "image/webp"
+          ? ".webp"
+          : contentType === "image/gif"
+            ? ".gif"
+            : "";
+  if (/\.(jpe?g|png|webp|gif)$/i.test(cleaned)) return cleaned;
+  return `${cleaned || "upload"}${extFromType}`;
+}
 
 export async function POST(request: Request): Promise<NextResponse> {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
@@ -54,22 +71,19 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    // A Blob store está configurada como privada, então enviamos com
-    // access "private". O arquivo não fica acessível pela URL direta;
-    // por isso servimos as imagens através da rota /api/file.
-    const blob = await put(file.name, file, {
+    const filename = safeUploadName(file.name || "upload", file.type);
+    const blob = await put(filename, file, {
       access: "private",
       addRandomSuffix: true,
     });
 
-    // Guardamos uma URL relativa que aponta para a rota de entrega.
-    // Isso funciona tanto no admin quanto no cardápio público.
     const url = `/api/file?pathname=${encodeURIComponent(blob.pathname)}`;
 
     return NextResponse.json({ url });
   } catch (error) {
+    console.error("api/upload:", error);
     return NextResponse.json(
-      { error: (error as Error).message },
+      { error: "Falha no upload da imagem." },
       { status: 500 }
     );
   }

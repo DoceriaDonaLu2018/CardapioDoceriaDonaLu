@@ -15,14 +15,23 @@ import {
   mapMercadoPagoError,
 } from "@/lib/payments/mercadopago";
 import { assertMemoryRateLimit } from "@/lib/payments/rate-limit";
+import { stripHtml } from "@/lib/validation/safe-input";
 
 const checkoutItemSchema = z.object({
-  productId: z.string().min(8).max(64),
+  productId: z
+    .string()
+    .min(8)
+    .max(64)
+    .regex(/^[a-zA-Z0-9_-]+$/),
   quantity: z.number().int().min(1).max(50),
 });
 
 const checkoutSchema = z.object({
-  customerName: z.string().trim().min(2, "Informe seu nome.").max(120),
+  // stripHtml: bloqueia payloads tipo <script> em campos de texto.
+  customerName: z
+    .string()
+    .transform(stripHtml)
+    .pipe(z.string().min(2, "Informe seu nome.").max(120)),
   customerPhone: z
     .string()
     .trim()
@@ -37,13 +46,24 @@ const checkoutSchema = z.object({
       (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
       "Informe um e-mail válido."
     ),
-  deliveryNotes: z.string().trim().max(400).optional(),
+  deliveryNotes: z
+    .string()
+    .optional()
+    .transform((v) => (v == null ? undefined : stripHtml(v).slice(0, 400))),
   items: z.array(checkoutItemSchema).min(1).max(40),
 });
 
 const orderAuthSchema = z.object({
-  orderId: z.string().min(8).max(64),
-  accessToken: z.string().min(32).max(128),
+  orderId: z
+    .string()
+    .min(8)
+    .max(64)
+    .regex(/^[a-zA-Z0-9_-]+$/),
+  accessToken: z
+    .string()
+    .min(32)
+    .max(128)
+    .regex(/^[a-f0-9]+$/i),
 });
 
 const checkoutProPaySchema = orderAuthSchema.extend({

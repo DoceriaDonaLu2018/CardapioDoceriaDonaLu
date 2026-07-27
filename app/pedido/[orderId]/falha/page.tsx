@@ -8,6 +8,8 @@ import { formatPrice } from "@/lib/format";
 import { parseMercadoPagoReturnParams } from "@/lib/payments/mp-return";
 import { Button } from "@/components/ui/button";
 
+import { failureMotivoSchema } from "@/lib/validation/safe-input";
+
 export const dynamic = "force-dynamic";
 
 interface PageProps {
@@ -16,7 +18,8 @@ interface PageProps {
 }
 
 function friendlyReason(motivo?: string | null): string {
-  const raw = (motivo ?? "").trim();
+  const capped = failureMotivoSchema.safeParse(motivo ?? "");
+  const raw = capped.success ? capped.data.trim() : "";
   if (!raw) {
     return "Não conseguimos confirmar o pagamento. Nenhuma cobrança definitiva foi registrada neste pedido, ou o banco recusou a operação.";
   }

@@ -97,6 +97,7 @@ async function getPeriodMetricsBatch(
     month_orders: number | string | null;
   };
 
+  // SQLi: tagged template Prisma (= prepared statement). Nunca use $queryRawUnsafe.
   const rows = await prisma.$queryRaw<BatchRow[]>`
     SELECT
       COALESCE(SUM(oi."priceAtTime" * oi.quantity) FILTER (WHERE o."createdAt" >= ${startOfToday}), 0) AS today_revenue,

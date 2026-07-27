@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
+import { idSchema, productWriteSchema } from "@/lib/validation/safe-input";
 
 export type ProductActionState = {
   error?: string;
@@ -17,11 +18,23 @@ function revalidateAll() {
 }
 
 function parsePrice(value: FormDataEntryValue | null): number {
-  // Aceita "12", "12.5" ou "12,50".
   const normalized = String(value ?? "")
     .replace(/\s/g, "")
     .replace(",", ".");
   return Number(normalized);
+}
+
+function parseProductForm(formData: FormData, withId: boolean) {
+  return productWriteSchema.safeParse({
+    id: withId ? String(formData.get("id") ?? "") : undefined,
+    title: String(formData.get("title") ?? ""),
+    description: String(formData.get("description") ?? ""),
+    imageUrl: String(formData.get("imageUrl") ?? ""),
+    categoryId: String(formData.get("categoryId") ?? ""),
+    price: parsePrice(formData.get("price")),
+    costPrice: parsePrice(formData.get("costPrice")),
+    isAvailable: formData.get("isAvailable") === "on",
+  });
 }
 
 export async function createProduct(
@@ -30,35 +43,27 @@ export async function createProduct(
 ): Promise<ProductActionState> {
   await requireAdmin();
 
-  const title = String(formData.get("title") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim();
-  const imageUrl = String(formData.get("imageUrl") ?? "").trim();
-  const categoryId = String(formData.get("categoryId") ?? "");
-  const price = parsePrice(formData.get("price"));
-  const costPrice = parsePrice(formData.get("costPrice"));
-  const isAvailable = formData.get("isAvailable") === "on";
+  const parsed = parseProductForm(formData, false);
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Dados do produto inválidos.",
+    };
+  }
 
-  if (!title) return { error: "Informe o título do produto." };
-  if (!categoryId) return { error: "Selecione uma categoria." };
-  if (!Number.isFinite(price) || price < 0) {
-    return { error: "Informe um preço válido." };
-  }
-  if (!Number.isFinite(costPrice) || costPrice < 0) {
-    return { error: "Informe um custo válido." };
-  }
+  const data = parsed.data;
 
   try {
     await prisma.product.create({
       data: {
-        title,
-        description,
+        title: data.title,
+        description: data.description,
         imageUrl:
-          imageUrl ||
+          data.imageUrl ||
           "https://placehold.co/800x450/cf2d6c/ffffff?text=Dona+Lu",
-        price,
-        costPrice,
-        isAvailable,
-        categoryId,
+        price: data.price,
+        costPrice: data.costPrice,
+        isAvailable: data.isAvailable,
+        categoryId: data.categoryId,
       },
     });
   } catch {
@@ -75,38 +80,30 @@ export async function updateProduct(
 ): Promise<ProductActionState> {
   await requireAdmin();
 
-  const id = String(formData.get("id") ?? "");
-  const title = String(formData.get("title") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim();
-  const imageUrl = String(formData.get("imageUrl") ?? "").trim();
-  const categoryId = String(formData.get("categoryId") ?? "");
-  const price = parsePrice(formData.get("price"));
-  const costPrice = parsePrice(formData.get("costPrice"));
-  const isAvailable = formData.get("isAvailable") === "on";
+  const parsed = parseProductForm(formData, true);
+  if (!parsed.success || !parsed.data.id) {
+    return {
+      error: parsed.success
+        ? "Produto inválido."
+        : (parsed.error.issues[0]?.message ?? "Dados do produto inválidos."),
+    };
+  }
 
-  if (!id) return { error: "Produto inválido." };
-  if (!title) return { error: "Informe o título do produto." };
-  if (!categoryId) return { error: "Selecione uma categoria." };
-  if (!Number.isFinite(price) || price < 0) {
-    return { error: "Informe um preço válido." };
-  }
-  if (!Number.isFinite(costPrice) || costPrice < 0) {
-    return { error: "Informe um custo válido." };
-  }
+  const data = parsed.data;
 
   try {
     await prisma.product.update({
-      where: { id },
+      where: { id: data.id },
       data: {
-        title,
-        description,
+        title: data.title,
+        description: data.description,
         imageUrl:
-          imageUrl ||
+          data.imageUrl ||
           "https://placehold.co/800x450/cf2d6c/ffffff?text=Dona+Lu",
-        price,
-        costPrice,
-        isAvailable,
-        categoryId,
+        price: data.price,
+        costPrice: data.costPrice,
+        isAvailable: data.isAvailable,
+        categoryId: data.categoryId,
       },
     });
   } catch {
@@ -120,12 +117,12 @@ export async function updateProduct(
 export async function deleteProduct(id: string): Promise<ProductActionState> {
   await requireAdmin();
 
-  if (!id) return { error: "Produto inválido." };
+  const parsedId = idSchema.safeParse(id);
+  if (!parsedId.success) return { error: "Produto inválido." };
 
   try {
-    // Soft delete: preserva OrderItems e o histórico de vendas.
     await prisma.product.update({
-      where: { id },
+      where: { id: parsedId.data },
       data: { isDeleted: true, isAvailable: false },
     });
   } catch {
@@ -136,17 +133,19 @@ export async function deleteProduct(id: string): Promise<ProductActionState> {
   return { success: true };
 }
 
-/** Alterna rapidamente a disponibilidade a partir da tabela. */
 export async function toggleProductAvailability(
   id: string,
   isAvailable: boolean
 ): Promise<ProductActionState> {
   await requireAdmin();
 
+  const parsedId = idSchema.safeParse(id);
+  if (!parsedId.success) return { error: "Produto inválido." };
+
   try {
     await prisma.product.update({
-      where: { id },
-      data: { isAvailable },
+      where: { id: parsedId.data },
+      data: { isAvailable: Boolean(isAvailable) },
     });
   } catch {
     return { error: "Não foi possível atualizar a disponibilidade." };

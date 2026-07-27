@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/slugify";
 import { requireAdmin } from "@/lib/auth-guard";
+import { categoryWriteSchema, idSchema } from "@/lib/validation/safe-input";
 
 export type CategoryActionState = {
   error?: string;
@@ -23,20 +24,23 @@ export async function createCategory(
 ): Promise<CategoryActionState> {
   await requireAdmin();
 
-  const name = String(formData.get("name") ?? "").trim();
-  const orderRaw = formData.get("order");
-  const order = orderRaw ? Number(orderRaw) : 0;
+  const parsed = categoryWriteSchema.safeParse({
+    name: String(formData.get("name") ?? ""),
+    order: formData.get("order") ?? 0,
+  });
 
-  if (!name) {
-    return { error: "Informe o nome da categoria." };
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Dados inválidos.",
+    };
   }
 
   try {
     await prisma.category.create({
       data: {
-        name,
-        slug: slugify(name),
-        order: Number.isFinite(order) ? order : 0,
+        name: parsed.data.name,
+        slug: slugify(parsed.data.name),
+        order: parsed.data.order,
       },
     });
   } catch {
@@ -53,21 +57,27 @@ export async function updateCategory(
 ): Promise<CategoryActionState> {
   await requireAdmin();
 
-  const id = String(formData.get("id") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-  const orderRaw = formData.get("order");
-  const order = orderRaw ? Number(orderRaw) : 0;
+  const parsed = categoryWriteSchema.safeParse({
+    id: String(formData.get("id") ?? ""),
+    name: String(formData.get("name") ?? ""),
+    order: formData.get("order") ?? 0,
+  });
 
-  if (!id) return { error: "Categoria inválida." };
-  if (!name) return { error: "Informe o nome da categoria." };
+  if (!parsed.success || !parsed.data.id) {
+    return {
+      error: parsed.success
+        ? "Categoria inválida."
+        : (parsed.error.issues[0]?.message ?? "Dados inválidos."),
+    };
+  }
 
   try {
     await prisma.category.update({
-      where: { id },
+      where: { id: parsed.data.id },
       data: {
-        name,
-        slug: slugify(name),
-        order: Number.isFinite(order) ? order : 0,
+        name: parsed.data.name,
+        slug: slugify(parsed.data.name),
+        order: parsed.data.order,
       },
     });
   } catch {
@@ -81,11 +91,11 @@ export async function updateCategory(
 export async function deleteCategory(id: string): Promise<CategoryActionState> {
   await requireAdmin();
 
-  if (!id) return { error: "Categoria inválida." };
+  const parsedId = idSchema.safeParse(id);
+  if (!parsedId.success) return { error: "Categoria inválida." };
 
   try {
-    // onDelete: SetNull — produtos ficam sem categoria e não bloqueiam a exclusão.
-    await prisma.category.delete({ where: { id } });
+    await prisma.category.delete({ where: { id: parsedId.data } });
   } catch {
     return { error: "Não foi possível excluir a categoria." };
   }

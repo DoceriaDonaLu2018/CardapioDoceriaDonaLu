@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
 import { KITCHEN_VISIBLE_STATUSES } from "@/lib/orders/constants";
+import { idSchema, pdvOrderSchema } from "@/lib/validation/safe-input";
 
 export type OrderActionState = {
   error?: string;
@@ -33,9 +34,9 @@ export type UpdateOrderInput = CreateOrderInput & {
 };
 
 /** Mantém apenas os dígitos do telefone (ou null quando vazio). */
-function normalizePhone(value?: string): string | null {
+function normalizePhone(value?: string | null): string | null {
   if (!value) return null;
-  const digits = value.replace(/\D/g, "");
+  const digits = value.replace(/\D/g, "").slice(0, 11);
   return digits.length > 0 ? digits : null;
 }
 
@@ -77,15 +78,19 @@ export async function createOrder(
     return { error: "Sessão expirada. Faça login novamente." };
   }
 
-  const name = input.customerName.trim();
-  if (!name) {
-    return { error: "Informe o nome do cliente." };
+  // Validação Zod no servidor — strip HTML + limites (não confiar no PDV client).
+  const parsed = pdvOrderSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Dados do pedido inválidos.",
+    };
   }
 
-  const waiterName = input.waiterName?.trim() || null;
-  const customerPhone = normalizePhone(input.customerPhone);
+  const name = parsed.data.customerName;
+  const waiterName = parsed.data.waiterName;
+  const customerPhone = normalizePhone(parsed.data.customerPhone);
 
-  const mergedItems = mergeItems(input.items);
+  const mergedItems = mergeItems(parsed.data.items);
   if (mergedItems.length === 0) {
     return { error: "Adicione pelo menos um item à comanda." };
   }
@@ -130,7 +135,7 @@ export async function createOrder(
   );
 
   // Sinal: não pode ser negativo nem exceder o total do pedido.
-  const rawAdvance = Number(input.advancePayment ?? 0);
+  const rawAdvance = Number(parsed.data.advancePayment ?? 0);
   if (!Number.isFinite(rawAdvance) || rawAdvance < 0) {
     return { error: "O valor do sinal é inválido." };
   }
@@ -182,14 +187,15 @@ export async function completeOrder(orderId: string): Promise<OrderActionState> 
     return { error: "Sessão expirada. Faça login novamente." };
   }
 
-  if (!orderId) {
+  const parsedId = idSchema.safeParse(orderId);
+  if (!parsedId.success) {
     return { error: "Pedido inválido." };
   }
 
   try {
     const result = await prisma.order.updateMany({
       where: {
-        id: orderId,
+        id: parsedId.data,
         status: { in: [...KITCHEN_VISIBLE_STATUSES] },
       },
       data: { status: "COMPLETED" },
@@ -204,7 +210,7 @@ export async function completeOrder(orderId: string): Promise<OrderActionState> 
 
     revalidateOrders();
 
-    return { success: true, orderId };
+    return { success: true, orderId: parsedId.data };
   } catch (error) {
     console.error("completeOrder:", error);
     return { error: "Não foi possível concluir o pedido." };
@@ -219,11 +225,12 @@ export async function cancelOrder(orderId: string): Promise<OrderActionState> {
     return { error: "Sessão expirada. Faça login novamente." };
   }
 
-  if (!orderId) return { error: "Pedido inválido." };
+  const parsedId = idSchema.safeParse(orderId);
+  if (!parsedId.success) return { error: "Pedido inválido." };
 
   try {
     const existing = await prisma.order.findUnique({
-      where: { id: orderId },
+      where: { id: parsedId.data },
       select: { status: true },
     });
     if (!existing) return { error: "Pedido não encontrado." };
@@ -232,12 +239,12 @@ export async function cancelOrder(orderId: string): Promise<OrderActionState> {
     }
 
     await prisma.order.update({
-      where: { id: orderId },
+      where: { id: parsedId.data },
       data: { status: "CANCELED" },
     });
 
     revalidateOrders();
-    return { success: true, orderId };
+    return { success: true, orderId: parsedId.data };
   } catch (error) {
     console.error("cancelOrder:", error);
     return { error: "Não foi possível cancelar o pedido." };
@@ -257,9 +264,12 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
 
   if (!orderId) return { error: "Pedido inválido." };
 
+  const parsedId = idSchema.safeParse(orderId);
+  if (!parsedId.success) return { error: "Pedido inválido." };
+
   try {
     const existing = await prisma.order.findUnique({
-      where: { id: orderId },
+      where: { id: parsedId.data },
       select: { status: true },
     });
     if (!existing) return { error: "Pedido não encontrado." };
@@ -274,12 +284,12 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
     }
 
     await prisma.order.update({
-      where: { id: orderId },
+      where: { id: parsedId.data },
       data: { status: "PENDING" },
     });
 
     revalidateOrders();
-    return { success: true, orderId };
+    return { success: true, orderId: parsedId.data };
   } catch (error) {
     console.error("reopenOrder:", error);
     return { error: "Não foi possível reabrir o pedido." };
@@ -296,15 +306,20 @@ export async function updateOrder(
     return { error: "Sessão expirada. Faça login novamente." };
   }
 
-  const orderId = input.orderId?.trim();
-  if (!orderId) return { error: "Pedido inválido." };
+  const parsed = pdvOrderSchema.safeParse(input);
+  if (!parsed.success || !parsed.data.orderId) {
+    return {
+      error: parsed.success
+        ? "Pedido inválido."
+        : (parsed.error.issues[0]?.message ?? "Dados do pedido inválidos."),
+    };
+  }
 
-  const name = input.customerName.trim();
-  if (!name) return { error: "Informe o nome do cliente." };
-
-  const waiterName = input.waiterName?.trim() || null;
-  const customerPhone = normalizePhone(input.customerPhone);
-  const mergedItems = mergeItems(input.items);
+  const orderId = parsed.data.orderId;
+  const name = parsed.data.customerName;
+  const waiterName = parsed.data.waiterName;
+  const customerPhone = normalizePhone(parsed.data.customerPhone);
+  const mergedItems = mergeItems(parsed.data.items);
   if (mergedItems.length === 0) {
     return { error: "Adicione pelo menos um item à comanda." };
   }
@@ -350,7 +365,7 @@ export async function updateOrder(
     0
   );
 
-  const rawAdvance = Number(input.advancePayment ?? 0);
+  const rawAdvance = Number(parsed.data.advancePayment ?? 0);
   if (!Number.isFinite(rawAdvance) || rawAdvance < 0) {
     return { error: "O valor do sinal é inválido." };
   }

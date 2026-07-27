@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
 import type { PricingMode, Unit } from "@/lib/pricing";
+import { fichaSaveSchema } from "@/lib/validation/safe-input";
 
 export type FichaActionState = {
   error?: string;
@@ -40,19 +41,25 @@ export async function saveFichaTecnica(
     return { error: "Sessão expirada. Faça login novamente." };
   }
 
-  if (!input.productId) {
-    return { error: "Selecione um produto para salvar a ficha técnica." };
+  // Revalida no servidor (não confiar só no Zod do client).
+  const parsed = fichaSaveSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Dados da ficha inválidos.",
+    };
   }
 
+  const data = parsed.data;
+
   const product = await prisma.product.findUnique({
-    where: { id: input.productId },
+    where: { id: data.productId },
     select: { id: true },
   });
   if (!product) {
     return { error: "Produto não encontrado." };
   }
 
-  const validLines = input.ingredients.filter(
+  const validLines = data.ingredients.filter(
     (line) => line.name.trim() && line.quantityUsed > 0
   );
 
@@ -133,13 +140,13 @@ export async function saveFichaTecnica(
         }
       }
 
-      await tx.recipeItem.deleteMany({ where: { productId: input.productId } });
+      await tx.recipeItem.deleteMany({ where: { productId: data.productId } });
 
       if (usedByIngredient.size > 0) {
         await tx.recipeItem.createMany({
           data: [...usedByIngredient.entries()].map(
             ([ingredientId, quantityUsed]) => ({
-              productId: input.productId,
+              productId: data.productId,
               ingredientId,
               quantityUsed,
             })
@@ -148,12 +155,12 @@ export async function saveFichaTecnica(
       }
 
       await tx.product.update({
-        where: { id: input.productId },
+        where: { id: data.productId },
         data: {
-          price: round2(input.sellingPrice),
-          costPrice: round2(input.totalCost),
-          pricingStrategy: input.mode,
-          pricingValue: input.strategyValue,
+          price: round2(data.sellingPrice),
+          costPrice: round2(data.totalCost),
+          pricingStrategy: data.mode,
+          pricingValue: data.strategyValue,
         },
       });
     });
