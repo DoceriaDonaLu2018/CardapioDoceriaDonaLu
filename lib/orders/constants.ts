@@ -28,3 +28,6 @@ export const OrderSource = {
 } as const;
 
 export type OrderSourceValue = (typeof OrderSource)[keyof typeof OrderSource];
+
+/** Valor fixo em deliveryAddress enquanto a doceria não faz entregas. */
+export const PICKUP_FULFILLMENT_LABEL = "Retirada no local";

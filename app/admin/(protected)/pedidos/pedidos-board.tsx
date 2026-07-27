@@ -24,6 +24,7 @@ import { usePendingOrders } from "@/hooks/use-pending-orders";
 import { canPrintOnCashierPc } from "@/lib/print";
 import { toKitchenReceiptData, type KitchenReceiptData } from "@/lib/receipt";
 import { formatOrderId } from "@/lib/order-period";
+import { PICKUP_FULFILLMENT_LABEL } from "@/lib/orders/constants";
 import { formatPhone, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -399,8 +400,8 @@ export function PedidosBoard() {
                     )}
                     {order.deliveryAddress && (
                       <p className="mt-0.5 text-xs text-stone-500">
-                        {order.deliveryAddress === "Retirada no local"
-                          ? "Retirada no local"
+                        {order.deliveryAddress === PICKUP_FULFILLMENT_LABEL
+                          ? PICKUP_FULFILLMENT_LABEL
                           : `Entrega: ${order.deliveryAddress}`}
                       </p>
                     )}

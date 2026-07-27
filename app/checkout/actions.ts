@@ -4,7 +4,11 @@ import { headers } from "next/headers";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { OrderSource, OrderStatus } from "@/lib/orders/constants";
+import {
+  OrderSource,
+  OrderStatus,
+  PICKUP_FULFILLMENT_LABEL,
+} from "@/lib/orders/constants";
 import {
   createMercadoPagoPixPayment,
   createPaymentAccessToken,
@@ -43,10 +47,9 @@ const checkoutSchema = z.object({
   items: z.array(checkoutItemSchema).min(1).max(40),
 });
 
-/** Valor fixo gravado em deliveryAddress enquanto a doceria não faz entregas. */
-export const PICKUP_FULFILLMENT_LABEL = "Retirada no local";
-
-export type CheckoutPixResult =
+// Em arquivos "use server" só se exportam Server Actions (funções async).
+// Constantes/tipos ficam em lib/ — não exportar daqui.
+type CheckoutPixResult =
   | {
       success: true;
       orderId: string;
