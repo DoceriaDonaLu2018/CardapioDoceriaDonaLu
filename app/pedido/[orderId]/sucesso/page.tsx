@@ -78,7 +78,7 @@ export default async function PedidoSucessoPage({
           </div>
           {order.deliveryAddress && (
             <div>
-              <p className="text-stone-500">Entrega</p>
+              <p className="text-stone-500">Modalidade</p>
               <p className="font-medium text-stone-800">{order.deliveryAddress}</p>
             </div>
           )}

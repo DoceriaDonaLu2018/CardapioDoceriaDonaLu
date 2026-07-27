@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, Lock } from "lucide-react";
+import { Loader2, Lock, MapPin } from "lucide-react";
 
 import { createOnlineOrderWithPix } from "@/app/checkout/actions";
 import { useCart } from "@/components/cart/cart-context";
@@ -23,7 +23,6 @@ export function CheckoutForm() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
 
   const canSubmit = useMemo(
@@ -41,7 +40,6 @@ export function CheckoutForm() {
         customerName,
         customerPhone,
         customerEmail,
-        deliveryAddress,
         deliveryNotes,
         items: items.map((item) => ({
           productId: item.productId,
@@ -80,11 +78,24 @@ export function CheckoutForm() {
       <div className="space-y-5 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
         <div>
           <h2 className="font-serif text-xl font-bold text-stone-800">
-            Dados de entrega
+            Dados do pedido
           </h2>
           <p className="mt-1 text-sm text-stone-500">
-            Sem cadastro e sem senha — só o necessário para entregar seu pedido.
+            Sem cadastro e sem senha — por enquanto só retirada no local.
           </p>
+        </div>
+
+        <div className="flex items-start gap-3 rounded-xl border border-coffee-100 bg-coffee-50/70 px-4 py-3">
+          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-coffee-700" />
+          <div>
+            <p className="text-sm font-semibold text-coffee-800">
+              Retirada no local
+            </p>
+            <p className="mt-0.5 text-sm text-coffee-700/80">
+              No momento não realizamos entregas. Após o pagamento, retire seu
+              pedido na doceria.
+            </p>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -127,25 +138,13 @@ export function CheckoutForm() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="deliveryAddress">Endereço de entrega</Label>
-          <Textarea
-            id="deliveryAddress"
-            required
-            rows={3}
-            value={deliveryAddress}
-            onChange={(e) => setDeliveryAddress(e.target.value)}
-            placeholder="Rua, número, bairro, complemento, cidade"
-          />
-        </div>
-
-        <div className="space-y-2">
           <Label htmlFor="deliveryNotes">Observações (opcional)</Label>
           <Textarea
             id="deliveryNotes"
             rows={2}
             value={deliveryNotes}
             onChange={(e) => setDeliveryNotes(e.target.value)}
-            placeholder="Ponto de referência, horário preferido…"
+            placeholder="Horário aproximado de retirada, detalhes do pedido…"
           />
         </div>
       </div>
@@ -175,6 +174,11 @@ export function CheckoutForm() {
             </li>
           ))}
         </ul>
+
+        <div className="flex items-center justify-between border-t border-stone-100 pt-3 text-sm">
+          <span className="text-stone-500">Modalidade</span>
+          <span className="font-medium text-stone-800">Retirada no local</span>
+        </div>
 
         <div className="flex items-center justify-between border-t border-stone-100 pt-3">
           <span className="text-stone-500">Total</span>

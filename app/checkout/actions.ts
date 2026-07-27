@@ -36,14 +36,15 @@ const checkoutSchema = z.object({
       (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
       "Informe um e-mail válido."
     ),
-  deliveryAddress: z
-    .string()
-    .trim()
-    .min(8, "Informe o endereço de entrega.")
-    .max(400),
+  // Endereço não é mais coletado: por enquanto só retirada no local.
+  // Mantemos o campo opcional só por compatibilidade; o servidor ignora e força o valor.
+  deliveryAddress: z.string().trim().max(400).optional(),
   deliveryNotes: z.string().trim().max(400).optional(),
   items: z.array(checkoutItemSchema).min(1).max(40),
 });
+
+/** Valor fixo gravado em deliveryAddress enquanto a doceria não faz entregas. */
+export const PICKUP_FULFILLMENT_LABEL = "Retirada no local";
 
 export type CheckoutPixResult =
   | {
@@ -181,7 +182,7 @@ export async function createOnlineOrderWithPix(
       customerName: input.customerName.trim(),
       customerPhone: phone,
       customerEmail: input.customerEmail.trim().toLowerCase(),
-      deliveryAddress: input.deliveryAddress.trim(),
+      deliveryAddress: PICKUP_FULFILLMENT_LABEL,
       deliveryNotes: input.deliveryNotes?.trim() || null,
       status: OrderStatus.AWAITING_PAYMENT,
       source: OrderSource.ONLINE,

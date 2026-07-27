@@ -399,7 +399,9 @@ export function PedidosBoard() {
                     )}
                     {order.deliveryAddress && (
                       <p className="mt-0.5 text-xs text-stone-500">
-                        Entrega: {order.deliveryAddress}
+                        {order.deliveryAddress === "Retirada no local"
+                          ? "Retirada no local"
+                          : `Entrega: ${order.deliveryAddress}`}
                       </p>
                     )}
                     <p className="mt-0.5 font-mono text-xs text-stone-400">
