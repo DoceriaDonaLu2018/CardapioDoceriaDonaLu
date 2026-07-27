@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 
 /**
- * Cliente Mercado Pago (PIX) — SOMENTE server-side.
+ * Cliente Mercado Pago — SOMENTE server-side (exceto Public Key no frontend).
  * Access Token e Webhook Secret NUNCA devem ir para o browser.
  */
 
@@ -11,7 +11,7 @@ function getAccessToken(): string {
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
   if (!token) {
     throw new Error(
-      "MERCADOPAGO_ACCESS_TOKEN não configurado. Defina no .env (somente backend)."
+      "MERCADOPAGO_ACCESS_TOKEN não configurado. Defina no Vercel (somente backend)."
     );
   }
   return token;
@@ -34,7 +34,9 @@ export function getAppBaseUrl(): string {
     process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
 
   if (fromEnv) {
-    return fromEnv.startsWith("http") ? fromEnv.replace(/\/$/, "") : `https://${fromEnv.replace(/\/$/, "")}`;
+    return fromEnv.startsWith("http")
+      ? fromEnv.replace(/\/$/, "")
+      : `https://${fromEnv.replace(/\/$/, "")}`;
   }
 
   if (process.env.VERCEL_URL) {
@@ -46,6 +48,28 @@ export function getAppBaseUrl(): string {
 
 export function createPaymentAccessToken(): string {
   return randomBytes(24).toString("hex");
+}
+
+/** Mensagens amigáveis para erros comuns do Mercado Pago. */
+export function mapMercadoPagoError(raw: string): string {
+  const msg = raw.toLowerCase();
+  if (
+    msg.includes("unauthorized use of live credentials") ||
+    msg.includes("live credentials")
+  ) {
+    return (
+      "Credenciais de produção do Mercado Pago não autorizadas neste ambiente. " +
+      "No Vercel, use Access Token + Public Key do MESMO modo (teste com TEST-… " +
+      "ou produção com APP_USR-…) e confirme que a conta/aplicação está ativa."
+    );
+  }
+  if (msg.includes("unauthorized") || msg.includes("invalid access token")) {
+    return "Access Token do Mercado Pago inválido ou ausente. Verifique MERCADOPAGO_ACCESS_TOKEN no Vercel.";
+  }
+  if (msg.includes("public_key") || msg.includes("public key")) {
+    return "Public Key do Mercado Pago inválida. Verifique NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY no Vercel.";
+  }
+  return raw;
 }
 
 export type CreatePixPaymentInput = {
@@ -63,9 +87,29 @@ export type CreatePixPaymentResult = {
   qrCodeBase64: string | null;
 };
 
+export type CreateCardPaymentInput = {
+  orderId: string;
+  amount: number;
+  description: string;
+  token: string;
+  paymentMethodId: string;
+  installments: number;
+  issuerId?: string | number | null;
+  payerEmail: string;
+  identificationType: string;
+  identificationNumber: string;
+};
+
+export type CreateCardPaymentResult = {
+  paymentId: string;
+  status: string;
+  statusDetail: string | null;
+};
+
 type MpPaymentResponse = {
   id?: number | string;
   status?: string;
+  status_detail?: string;
   transaction_amount?: number;
   external_reference?: string | null;
   point_of_interaction?: {
@@ -76,7 +120,22 @@ type MpPaymentResponse = {
   };
   message?: string;
   error?: string;
+  cause?: Array<{ description?: string; code?: string | number }>;
 };
+
+function extractMpErrorMessage(data: MpPaymentResponse): string {
+  const cause = data.cause?.[0]?.description;
+  return (
+    cause ||
+    data.message ||
+    data.error ||
+    "Falha ao processar o pagamento no Mercado Pago."
+  );
+}
+
+function notificationUrl(): string {
+  return `${getAppBaseUrl()}/api/webhooks/mercadopago?source_news=webhooks`;
+}
 
 /** Gera PIX dinâmico atrelado ao orderId (external_reference). */
 export async function createMercadoPagoPixPayment(
@@ -89,14 +148,12 @@ export async function createMercadoPagoPixPayment(
     throw new Error("Valor do pagamento PIX inválido.");
   }
 
-  const notificationUrl = `${getAppBaseUrl()}/api/webhooks/mercadopago?source_news=webhooks`;
-
   const body = {
     transaction_amount: amount,
     description: input.description.slice(0, 255),
     payment_method_id: "pix",
     external_reference: input.orderId,
-    notification_url: notificationUrl,
+    notification_url: notificationUrl(),
     payer: {
       email: input.payerEmail,
       first_name: input.payerName.slice(0, 80) || "Cliente",
@@ -108,8 +165,7 @@ export async function createMercadoPagoPixPayment(
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
-      // Idempotência: reenvio com o mesmo orderId não cria pagamento duplicado no MP.
-      "X-Idempotency-Key": `ddl-order-${input.orderId}`,
+      "X-Idempotency-Key": `ddl-pix-${input.orderId}`,
     },
     body: JSON.stringify(body),
   });
@@ -117,10 +173,8 @@ export async function createMercadoPagoPixPayment(
   const data = (await response.json()) as MpPaymentResponse;
 
   if (!response.ok || data.id == null) {
-    console.error("Mercado Pago create payment failed:", data);
-    throw new Error(
-      data.message || data.error || "Falha ao gerar o PIX no gateway."
-    );
+    console.error("Mercado Pago create PIX failed:", data);
+    throw new Error(mapMercadoPagoError(extractMpErrorMessage(data)));
   }
 
   const copyPaste = data.point_of_interaction?.transaction_data?.qr_code;
@@ -134,6 +188,69 @@ export async function createMercadoPagoPixPayment(
     copyPaste,
     qrCodeBase64:
       data.point_of_interaction?.transaction_data?.qr_code_base64 ?? null,
+  };
+}
+
+/**
+ * Cria pagamento com cartão usando token gerado no frontend (Card Payment Brick).
+ * O servidor NUNCA recebe número/CVV — só o token opaco do Mercado Pago.
+ */
+export async function createMercadoPagoCardPayment(
+  input: CreateCardPaymentInput
+): Promise<CreateCardPaymentResult> {
+  const accessToken = getAccessToken();
+  const amount = Math.round(input.amount * 100) / 100;
+
+  if (!Number.isFinite(amount) || amount < 0.01) {
+    throw new Error("Valor do pagamento com cartão inválido.");
+  }
+  if (!input.token.trim()) {
+    throw new Error("Token do cartão ausente.");
+  }
+
+  const body: Record<string, unknown> = {
+    transaction_amount: amount,
+    token: input.token,
+    description: input.description.slice(0, 255),
+    installments: Math.max(1, Math.floor(input.installments || 1)),
+    payment_method_id: input.paymentMethodId,
+    external_reference: input.orderId,
+    notification_url: notificationUrl(),
+    payer: {
+      email: input.payerEmail,
+      identification: {
+        type: input.identificationType,
+        number: input.identificationNumber.replace(/\D/g, ""),
+      },
+    },
+  };
+
+  if (input.issuerId != null && String(input.issuerId).length > 0) {
+    body.issuer_id = String(input.issuerId);
+  }
+
+  const response = await fetch(`${MP_API}/v1/payments`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      // Nova tentativa = nova chave (token do cartão é de uso único).
+      "X-Idempotency-Key": `ddl-card-${input.orderId}-${input.token.slice(0, 16)}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = (await response.json()) as MpPaymentResponse;
+
+  if (!response.ok || data.id == null) {
+    console.error("Mercado Pago create card payment failed:", data);
+    throw new Error(mapMercadoPagoError(extractMpErrorMessage(data)));
+  }
+
+  return {
+    paymentId: String(data.id),
+    status: data.status ?? "pending",
+    statusDetail: data.status_detail ?? null,
   };
 }
 
@@ -167,8 +284,6 @@ export async function fetchMercadoPagoPayment(
 
 /**
  * PROTEÇÃO 1 — Validação criptográfica do webhook Mercado Pago.
- * Manifest: id:{data.id};request-id:{x-request-id};ts:{ts};
- * HMAC-SHA256 hex comparado em tempo constante com v1 do header x-signature.
  */
 export function verifyMercadoPagoWebhookSignature(params: {
   xSignature: string | null;
@@ -191,7 +306,6 @@ export function verifyMercadoPagoWebhookSignature(params: {
   const v1 = parts.v1;
   if (!ts || !v1) return false;
 
-  // Tolerância de clock skew (±5 min) mitiga replay de assinaturas antigas.
   const tsMs = Number(ts);
   if (Number.isFinite(tsMs)) {
     const skew = Math.abs(Date.now() - tsMs);

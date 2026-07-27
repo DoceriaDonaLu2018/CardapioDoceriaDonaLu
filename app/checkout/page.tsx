@@ -33,7 +33,7 @@ export default function CheckoutPage() {
               Checkout
             </h1>
             <p className="mt-1 text-stone-500">
-              Pagamento via PIX · retirada no local. Sem login, sem SMS.
+              PIX, crédito ou débito · retirada no local. Sem login, sem SMS.
             </p>
           </div>
           <CheckoutForm />

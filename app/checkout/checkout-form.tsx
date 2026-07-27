@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Lock, MapPin } from "lucide-react";
 
-import { createOnlineOrderWithPix } from "@/app/checkout/actions";
+import { createOnlineOrder } from "@/app/checkout/actions";
 import { useCart } from "@/components/cart/cart-context";
 import { formatPhone, formatPrice } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ export function CheckoutForm() {
     setError(null);
 
     startTransition(async () => {
-      const result = await createOnlineOrderWithPix({
+      const result = await createOnlineOrder({
         customerName,
         customerPhone,
         customerEmail,
@@ -201,19 +201,19 @@ export function CheckoutForm() {
           {isPending ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Gerando PIX…
+              Preparando pagamento…
             </>
           ) : (
             <>
               <Lock className="h-4 w-4" />
-              Gerar PIX e pagar
+              Pagar com PIX ou cartão
             </>
           )}
         </Button>
 
         <p className="text-center text-xs text-stone-400">
-          Pagamento processado com segurança via Mercado Pago. O pedido só vai
-          para a cozinha após a confirmação do PIX.
+          Aceitamos PIX, crédito e débito via Mercado Pago. O pedido só vai
+          para a cozinha após a confirmação do pagamento.
         </p>
       </aside>
     </form>
