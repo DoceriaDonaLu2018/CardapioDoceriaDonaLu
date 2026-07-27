@@ -198,7 +198,7 @@ export async function completeOrder(orderId: string): Promise<OrderActionState> 
     if (result.count === 0) {
       return {
         error:
-          "Só é possível concluir pedidos pagos (PIX) ou pendentes do balcão.",
+          "Só é possível concluir pedidos pagos (online) ou pendentes do balcão.",
       };
     }
 
@@ -269,7 +269,7 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
     if (existing.status === "AWAITING_PAYMENT") {
       return {
         error:
-          "Pedidos aguardando PIX não podem ser reabertos no PDV. Cancele ou aguarde o pagamento.",
+          "Pedidos aguardando pagamento online não podem ser reabertos no PDV. Cancele ou aguarde a confirmação.",
       };
     }
 

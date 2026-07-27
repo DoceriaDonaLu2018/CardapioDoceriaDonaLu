@@ -14,11 +14,7 @@ export async function syncOrderPaymentFromGateway(params: {
   orderId: string;
   accessToken: string;
   paymentId: string;
-}): Promise<{
-  status: string;
-  paid: boolean;
-  paymentMethodId: string | null;
-}> {
+}): Promise<{ status: string; paid: boolean }> {
   const order = await prisma.order.findFirst({
     where: {
       id: params.orderId,
@@ -29,7 +25,6 @@ export async function syncOrderPaymentFromGateway(params: {
       id: true,
       status: true,
       totalAmount: true,
-      paymentId: true,
     },
   });
 
@@ -41,7 +36,7 @@ export async function syncOrderPaymentFromGateway(params: {
     order.status === OrderStatus.PAID ||
     order.status === OrderStatus.COMPLETED
   ) {
-    return { status: "approved", paid: true, paymentMethodId: null };
+    return { status: "approved", paid: true };
   }
 
   const payment = await fetchMercadoPagoPayment(params.paymentId);
@@ -70,16 +65,8 @@ export async function syncOrderPaymentFromGateway(params: {
         paidAt: new Date(),
       },
     });
-    return {
-      status: payment.status,
-      paid: true,
-      paymentMethodId: payment.paymentMethodId,
-    };
+    return { status: payment.status, paid: true };
   }
 
-  return {
-    status: payment.status,
-    paid: false,
-    paymentMethodId: payment.paymentMethodId,
-  };
+  return { status: payment.status, paid: false };
 }

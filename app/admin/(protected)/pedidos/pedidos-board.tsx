@@ -390,7 +390,7 @@ export function PedidosBoard() {
                     )}
                     {order.source === "ONLINE" && (
                       <p className="mt-0.5 text-xs font-medium text-green-700">
-                        PIX online confirmado
+                        Pedido online confirmado
                       </p>
                     )}
                     {order.customerPhone && (

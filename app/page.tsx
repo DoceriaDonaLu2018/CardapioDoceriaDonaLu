@@ -46,8 +46,8 @@ export default async function Home() {
             Doceria Dona Lu
           </h1>
           <p className="max-w-xl text-base text-stone-500">
-            Doces preparados com carinho. Monte seu pedido, pague com PIX e
-            acompanhe a confirmação automaticamente.
+            Doces preparados com carinho. Monte seu pedido, pague no Mercado
+            Pago e acompanhe a confirmação automaticamente.
           </p>
         </div>
       </section>

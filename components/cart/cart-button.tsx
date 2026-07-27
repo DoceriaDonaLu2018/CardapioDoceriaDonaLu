@@ -44,7 +44,7 @@ export function CartButton() {
             Seu pedido
           </SheetTitle>
           <SheetDescription>
-            Revise os itens e pague com PIX ou cartão — sem criar conta.
+            Revise os itens e pague no Mercado Pago — sem criar conta.
           </SheetDescription>
         </SheetHeader>
 
@@ -132,7 +132,7 @@ export function CartButton() {
             disabled={items.length === 0}
             className="w-full bg-coffee-600 text-white hover:bg-coffee-700 disabled:opacity-50"
           >
-            <Link href="/checkout">Pagar com PIX ou cartão</Link>
+            <Link href="/checkout">Ir para o pagamento</Link>
           </Button>
         </SheetFooter>
       </SheetContent>

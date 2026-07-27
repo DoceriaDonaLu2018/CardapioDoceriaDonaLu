@@ -19,7 +19,7 @@ export type OrderStatusValue =
 /** Pedidos que a cozinha / badge / auto-impressão devem enxergar. */
 export const KITCHEN_VISIBLE_STATUSES: OrderStatusValue[] = [
   OrderStatus.PENDING, // balcão / PDV
-  OrderStatus.PAID, // checkout online pago via PIX
+  OrderStatus.PAID, // checkout online pago (Checkout Pro)
 ];
 
 export const OrderSource = {

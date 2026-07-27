@@ -22,11 +22,14 @@ interface PageProps {
 }
 
 function paymentMethodLabel(method: string | null): string {
-  if (!method || method === "pix" || method === "checkout_pro") {
-    return method === "pix" ? "PIX" : "Mercado Pago";
-  }
+  if (!method || method === "checkout_pro") return "Mercado Pago";
+  if (method === "pix") return "PIX";
   if (method === "account_money") return "Saldo Mercado Pago";
-  if (["visa", "master", "amex", "elo", "hipercard", "debvisa", "debmaster"].includes(method)) {
+  if (
+    ["visa", "master", "amex", "elo", "hipercard", "debvisa", "debmaster"].includes(
+      method
+    )
+  ) {
     return "Cartão";
   }
   return "Mercado Pago";

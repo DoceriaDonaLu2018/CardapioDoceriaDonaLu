@@ -8,7 +8,7 @@ import { OrderStatus } from "@/lib/orders/constants";
 export const dynamic = "force-dynamic";
 
 /**
- * Polling leve do cliente na tela do QR Code.
+ * Polling leve do status do pedido (tela pendente / retorno do Checkout Pro).
  * Exige paymentAccessToken (não é a secret do gateway) para evitar enumeração.
  */
 const paramsSchema = z.object({

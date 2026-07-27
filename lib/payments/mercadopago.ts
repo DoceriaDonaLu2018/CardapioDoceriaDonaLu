@@ -70,18 +70,6 @@ export function mapMercadoPagoError(raw: string): string {
   return raw;
 }
 
-type MpPaymentResponse = {
-  id?: number | string;
-  status?: string;
-  status_detail?: string;
-  transaction_amount?: number;
-  external_reference?: string | null;
-  payment_method_id?: string;
-  message?: string;
-  error?: string;
-  cause?: Array<{ description?: string; code?: string | number }>;
-};
-
 function notificationUrl(): string {
   return `${getAppBaseUrl()}/api/webhooks/mercadopago?source_news=webhooks`;
 }
@@ -101,19 +89,13 @@ export type CreateCheckoutProPreferenceInput = {
   payerName: string;
 };
 
-export type CreateCheckoutProPreferenceResult = {
-  preferenceId: string;
-  checkoutUrl: string;
-};
-
 /**
  * Checkout Pro: cria preferência e devolve a URL do Mercado Pago.
  * O cliente paga lá (PIX / crédito / débito) e volta pelas back_urls.
- * POST https://api.mercadopago.com/checkout/preferences
  */
 export async function createCheckoutProPreference(
   input: CreateCheckoutProPreferenceInput
-): Promise<CreateCheckoutProPreferenceResult> {
+): Promise<{ checkoutUrl: string }> {
   const token = getAccessToken();
   const base = getAppBaseUrl();
 
@@ -153,7 +135,6 @@ export async function createCheckoutProPreference(
     shipments: {
       local_pickup: true,
     },
-    // PIX + cartões (crédito/débito) — sem boleto/ticket.
     payment_methods: {
       excluded_payment_types: [{ id: "ticket" }],
       installments: 12,
@@ -198,19 +179,13 @@ export async function createCheckoutProPreference(
     throw new Error("Mercado Pago não retornou a URL de checkout.");
   }
 
-  return {
-    preferenceId: data.id,
-    checkoutUrl,
-  };
+  return { checkoutUrl };
 }
 
 /** Reconsulta o pagamento no gateway (fonte da verdade — não confiar só no webhook). */
-export async function fetchMercadoPagoPayment(
-  paymentId: string
-): Promise<{
+export async function fetchMercadoPagoPayment(paymentId: string): Promise<{
   id: string;
   status: string;
-  statusDetail: string | null;
   amount: number;
   externalReference: string | null;
   paymentMethodId: string | null;
@@ -221,7 +196,14 @@ export async function fetchMercadoPagoPayment(
     cache: "no-store",
   });
 
-  const data = (await response.json()) as MpPaymentResponse;
+  const data = (await response.json()) as {
+    id?: number | string;
+    status?: string;
+    transaction_amount?: number;
+    external_reference?: string | null;
+    payment_method_id?: string;
+  };
+
   if (!response.ok || data.id == null) {
     throw new Error("Não foi possível validar o pagamento no gateway.");
   }
@@ -229,16 +211,13 @@ export async function fetchMercadoPagoPayment(
   return {
     id: String(data.id),
     status: data.status ?? "",
-    statusDetail: data.status_detail ?? null,
     amount: Number(data.transaction_amount ?? 0),
     externalReference: data.external_reference ?? null,
     paymentMethodId: data.payment_method_id ?? null,
   };
 }
 
-/**
- * PROTEÇÃO 1 — Validação criptográfica do webhook Mercado Pago.
- */
+/** Validação criptográfica do webhook Mercado Pago (x-signature). */
 export function verifyMercadoPagoWebhookSignature(params: {
   xSignature: string | null;
   xRequestId: string | null;

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Short-polling de pedidos prontos para a cozinha.
- * REGRA DE OURO: ignora AWAITING_PAYMENT — só PENDING (PDV) e PAID (PIX confirmado).
+ * REGRA DE OURO: ignora AWAITING_PAYMENT — só PENDING (PDV) e PAID (online confirmado).
  *
  * - `?countOnly=1` → só a contagem (badge da sidebar; query leve).
  * - sem param → lista completa (painel de recepção / auto-impressão).

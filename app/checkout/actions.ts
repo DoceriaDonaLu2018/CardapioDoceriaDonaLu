@@ -37,7 +37,6 @@ const checkoutSchema = z.object({
       (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
       "Informe um e-mail válido."
     ),
-  deliveryAddress: z.string().trim().max(400).optional(),
   deliveryNotes: z.string().trim().max(400).optional(),
   items: z.array(checkoutItemSchema).min(1).max(40),
 });
@@ -54,6 +53,11 @@ function normalizePhone(value: string): string {
   return value.replace(/\D/g, "").slice(0, 11);
 }
 
+/**
+ * Limite por WhatsApp: 5 pedidos online por hora (janela rolante).
+ * Depois de 1h desde o 1º desses 5, libera novamente.
+ * IP só freia flood abusivo.
+ */
 async function assertRateLimits(phone: string): Promise<ActionErr | null> {
   const hdrs = await headers();
   const ip =
@@ -61,7 +65,7 @@ async function assertRateLimits(phone: string): Promise<ActionErr | null> {
     hdrs.get("x-real-ip") ||
     "unknown";
 
-  const ipLimit = assertMemoryRateLimit(`checkout:ip:${ip}`, 8, 15 * 60 * 1000);
+  const ipLimit = assertMemoryRateLimit(`checkout:ip:${ip}`, 40, 15 * 60 * 1000);
   if (!ipLimit.ok) {
     return {
       success: false,
@@ -69,29 +73,20 @@ async function assertRateLimits(phone: string): Promise<ActionErr | null> {
     };
   }
 
-  const phoneLimit = assertMemoryRateLimit(
-    `checkout:phone:${phone}`,
-    5,
-    60 * 60 * 1000
-  );
-  if (!phoneLimit.ok) {
-    return {
-      success: false,
-      error: "Limite de pedidos para este WhatsApp. Tente mais tarde.",
-    };
-  }
-
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const recentByPhone = await prisma.order.count({
     where: {
       source: OrderSource.ONLINE,
       customerPhone: phone,
-      createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) },
+      createdAt: { gte: oneHourAgo },
     },
   });
+
   if (recentByPhone >= 5) {
     return {
       success: false,
-      error: "Limite de pedidos para este WhatsApp. Tente mais tarde.",
+      error:
+        "Limite de 5 pedidos por hora neste WhatsApp. Aguarde a próxima hora para pedir de novo.",
     };
   }
 
@@ -257,15 +252,6 @@ export async function startCheckoutProPayment(
         quantity: item.quantity,
         unitPrice: item.priceAtTime,
       })),
-    });
-
-    await prisma.order.update({
-      where: { id: order.id },
-      data: {
-        paymentMethod: "checkout_pro",
-        // Preferência ainda não é paymentId — só guarda referência auxiliar.
-        pixCopyPaste: `pref:${preference.preferenceId}`,
-      },
     });
 
     return { success: true, checkoutUrl: preference.checkoutUrl };

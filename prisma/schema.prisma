@@ -75,11 +75,11 @@ model Order {
   id                 String      @id @default(cuid())
   customerName       String
   customerPhone      String? // WhatsApp da encomenda (opcional)
-  customerEmail      String? // obrigatório no checkout online (payer PIX)
+  customerEmail      String? // obrigatório no checkout online (payer MP)
   waiterName         String?
   // State machine:
   // PDV: PENDING → COMPLETED | CANCELED
-  // Online PIX: AWAITING_PAYMENT → PAID → COMPLETED | CANCELED
+  // Online (Checkout Pro): AWAITING_PAYMENT → PAID → COMPLETED | CANCELED
   // Cozinha NUNCA vê AWAITING_PAYMENT — só PENDING (balcão) e PAID (pago online).
   status             String      @default("PENDING")
   source             String      @default("PDV") // PDV | ONLINE
@@ -87,13 +87,11 @@ model Order {
   advancePayment     Float       @default(0) // sinal pago antecipadamente (PDV)
   deliveryAddress    String?
   deliveryNotes      String?
-  // Integração gateway (Mercado Pago PIX)
-  paymentId          String?     @unique // ID do pagamento no gateway
+  // Mercado Pago Checkout Pro
+  paymentId          String?     @unique // ID do pagamento aprovado no gateway
   paymentProvider    String? // mercadopago
-  paymentMethod      String? // pix
-  pixCopyPaste       String?     @db.Text
-  pixQrCodeBase64    String?     @db.Text
-  // Token opaco para o cliente consultar status / ver QR sem login (não é secret do gateway).
+  paymentMethod      String? // pix | visa | master | checkout_pro | …
+  // Token opaco para o cliente voltar das back_urls / consultar status (não é secret do gateway).
   paymentAccessToken String?     @unique
   paidAt             DateTime?
   items              OrderItem[]
