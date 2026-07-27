@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AlertCircle, CreditCard, QrCode, RotateCcw } from "lucide-react";
 
 import { prisma } from "@/lib/prisma";
@@ -33,6 +33,9 @@ function friendlyReason(motivo?: string | null): string {
   if (lower.includes("credencial") || lower.includes("unauthorized")) {
     return "Houve um problema na configuração do pagamento. Se o erro continuar, fale com a doceria.";
   }
+  if (lower.includes("rejected") || lower.includes("recus")) {
+    return "O pagamento foi recusado. Tente novamente com outro meio no Mercado Pago.";
+  }
   return raw;
 }
 
@@ -61,12 +64,10 @@ export default async function PedidoFalhaPage({
 
   if (!order || !order.paymentAccessToken) notFound();
 
-  // Se já pagou, manda para sucesso (evita tela de falha desatualizada).
   if (
     order.status === OrderStatus.PAID ||
     order.status === OrderStatus.COMPLETED
   ) {
-    const { redirect } = await import("next/navigation");
     redirect(
       `/pedido/${order.id}/sucesso?token=${encodeURIComponent(order.paymentAccessToken)}`
     );
@@ -91,9 +92,8 @@ export default async function PedidoFalhaPage({
             Seu pedido ainda não foi efetuado
           </h1>
           <p className="mt-3 max-w-sm text-stone-500">
-            Olá, {firstName}. Por causa da forma de pagamento, não
-            conseguimos finalizar agora — mas você pode tentar de novo com
-            segurança.
+            Olá, {firstName}. O pagamento no Mercado Pago não foi finalizado —
+            você pode tentar de novo com segurança.
           </p>
         </div>
 
@@ -120,11 +120,13 @@ export default async function PedidoFalhaPage({
           <ul className="space-y-2">
             <li className="flex items-start gap-2">
               <QrCode className="mt-0.5 h-4 w-4 shrink-0 text-coffee-600" />
-              <span>Pagar com PIX (confirmação rápida).</span>
+              <span>Pagar com PIX no Mercado Pago.</span>
             </li>
             <li className="flex items-start gap-2">
               <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-coffee-600" />
-              <span>Tentar outro cartão de crédito ou débito.</span>
+              <span>
+                Tentar crédito ou débito na mesma tela do Mercado Pago.
+              </span>
             </li>
           </ul>
         </div>

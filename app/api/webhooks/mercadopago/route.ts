@@ -181,9 +181,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // paymentId do pedido deve bater (se já vinculado na criação do PIX).
-  if (order.paymentId && order.paymentId !== payment.id) {
-    console.error("Webhook paymentId mismatch", {
+  // Se já está pago com outro paymentId, rejeita. Se ainda aguarda, aceita novo id (retry Checkout Pro).
+  if (
+    order.paymentId &&
+    order.paymentId !== payment.id &&
+    (order.status === OrderStatus.PAID ||
+      order.status === OrderStatus.COMPLETED)
+  ) {
+    console.error("Webhook paymentId mismatch on paid order", {
       orderId,
       expected: order.paymentId,
       got: payment.id,
@@ -223,6 +228,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         data: {
           status: OrderStatus.PAID,
           paymentId: payment.id,
+          paymentMethod: payment.paymentMethodId ?? "checkout_pro",
           paidAt: new Date(),
         },
       });

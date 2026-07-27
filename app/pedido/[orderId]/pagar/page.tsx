@@ -32,9 +32,6 @@ export default async function PagarPedidoPage({
       status: true,
       totalAmount: true,
       customerName: true,
-      customerEmail: true,
-      pixCopyPaste: true,
-      pixQrCodeBase64: true,
       paymentAccessToken: true,
     },
   });
@@ -71,9 +68,6 @@ export default async function PagarPedidoPage({
     );
   }
 
-  const publicKey =
-    process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY?.trim() || null;
-
   return (
     <div className="min-h-screen bg-stone-50 py-10">
       <div className="container">
@@ -82,10 +76,6 @@ export default async function PagarPedidoPage({
           accessToken={order.paymentAccessToken}
           totalAmount={order.totalAmount}
           customerName={order.customerName}
-          customerEmail={order.customerEmail ?? ""}
-          initialPixCopyPaste={order.pixCopyPaste}
-          initialPixQrCodeBase64={order.pixQrCodeBase64}
-          publicKey={publicKey}
         />
       </div>
     </div>

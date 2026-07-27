@@ -1,17 +1,35 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CheckCircle2, Clock3, MapPin, MessageCircle } from "lucide-react";
 
 import { prisma } from "@/lib/prisma";
 import { OrderStatus, PICKUP_FULFILLMENT_LABEL } from "@/lib/orders/constants";
 import { formatPhone, formatPrice } from "@/lib/format";
+import { syncOrderPaymentFromGateway } from "@/lib/payments/sync-order-payment";
 import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ orderId: string }>;
-  searchParams: Promise<{ token?: string }>;
+  searchParams: Promise<{
+    token?: string;
+    payment_id?: string;
+    collection_id?: string;
+    status?: string;
+    collection_status?: string;
+  }>;
+}
+
+function paymentMethodLabel(method: string | null): string {
+  if (!method || method === "pix" || method === "checkout_pro") {
+    return method === "pix" ? "PIX" : "Mercado Pago";
+  }
+  if (method === "account_money") return "Saldo Mercado Pago";
+  if (["visa", "master", "amex", "elo", "hipercard", "debvisa", "debmaster"].includes(method)) {
+    return "Cartão";
+  }
+  return "Mercado Pago";
 }
 
 export default async function PedidoSucessoPage({
@@ -19,8 +37,41 @@ export default async function PedidoSucessoPage({
   searchParams,
 }: PageProps) {
   const { orderId } = await params;
-  const { token } = await searchParams;
+  const qs = await searchParams;
+  const token = qs.token;
   if (!token) notFound();
+
+  const paymentIdRaw = qs.payment_id || qs.collection_id;
+  const paymentId =
+    paymentIdRaw && paymentIdRaw !== "null" ? paymentIdRaw : null;
+
+  // Retorno do Checkout Pro: sincroniza com o gateway se o webhook ainda não rodou.
+  if (paymentId) {
+    let syncPaid = false;
+    let syncStatus = "";
+    try {
+      const sync = await syncOrderPaymentFromGateway({
+        orderId,
+        accessToken: token,
+        paymentId,
+      });
+      syncPaid = sync.paid;
+      syncStatus = sync.status;
+    } catch (error) {
+      console.error("sucesso sync payment:", error);
+    }
+
+    if (!syncPaid && syncStatus) {
+      if (syncStatus === "pending" || syncStatus === "in_process") {
+        redirect(
+          `/pedido/${orderId}/pendente?token=${encodeURIComponent(token)}&payment_id=${encodeURIComponent(paymentId)}`
+        );
+      }
+      redirect(
+        `/pedido/${orderId}/falha?token=${encodeURIComponent(token)}&motivo=${encodeURIComponent(`Pagamento ${syncStatus}`)}`
+      );
+    }
+  }
 
   const order = await prisma.order.findFirst({
     where: {
@@ -47,17 +98,33 @@ export default async function PedidoSucessoPage({
     },
   });
 
-  if (!order) notFound();
+  // Ainda aguardando confirmação (webhook atrasado, sem payment_id na URL).
+  if (!order) {
+    const awaiting = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        paymentAccessToken: token,
+        source: "ONLINE",
+        status: OrderStatus.AWAITING_PAYMENT,
+      },
+      select: { id: true },
+    });
+    if (awaiting) {
+      redirect(
+        `/pedido/${orderId}/pendente?token=${encodeURIComponent(token)}${
+          paymentId ? `&payment_id=${encodeURIComponent(paymentId)}` : ""
+        }`
+      );
+    }
+    notFound();
+  }
 
   const firstName = order.customerName.split(" ")[0] || "cliente";
   const shortId = order.id.slice(-8).toUpperCase();
   const isPickup =
     !order.deliveryAddress ||
     order.deliveryAddress === PICKUP_FULFILLMENT_LABEL;
-  const methodLabel =
-    !order.paymentMethod || order.paymentMethod === "pix"
-      ? "PIX"
-      : "Cartão";
+  const methodLabel = paymentMethodLabel(order.paymentMethod);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-stone-50 px-4 py-12">

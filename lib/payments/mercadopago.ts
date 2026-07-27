@@ -1,8 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 
 /**
- * Cliente Mercado Pago — SOMENTE server-side (exceto Public Key no frontend).
+ * Cliente Mercado Pago — SOMENTE server-side.
  * Access Token e Webhook Secret NUNCA devem ir para o browser.
+ * Checkout Pro: POST /checkout/preferences → redirect init_point.
  */
 
 const MP_API = "https://api.mercadopago.com";
@@ -59,52 +60,15 @@ export function mapMercadoPagoError(raw: string): string {
   ) {
     return (
       "Credenciais de produção do Mercado Pago não autorizadas neste ambiente. " +
-      "No Vercel, use Access Token + Public Key do MESMO modo (teste com TEST-… " +
-      "ou produção com APP_USR-…) e confirme que a conta/aplicação está ativa."
+      "No Vercel, use um Access Token válido (TEST-… para teste ou APP_USR-… para produção) " +
+      "e confirme que a conta/aplicação está ativa."
     );
   }
   if (msg.includes("unauthorized") || msg.includes("invalid access token")) {
     return "Access Token do Mercado Pago inválido ou ausente. Verifique MERCADOPAGO_ACCESS_TOKEN no Vercel.";
   }
-  if (msg.includes("public_key") || msg.includes("public key")) {
-    return "Public Key do Mercado Pago inválida. Verifique NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY no Vercel.";
-  }
   return raw;
 }
-
-export type CreatePixPaymentInput = {
-  orderId: string;
-  amount: number;
-  description: string;
-  payerEmail: string;
-  payerName: string;
-};
-
-export type CreatePixPaymentResult = {
-  paymentId: string;
-  status: string;
-  copyPaste: string;
-  qrCodeBase64: string | null;
-};
-
-export type CreateCardPaymentInput = {
-  orderId: string;
-  amount: number;
-  description: string;
-  token: string;
-  paymentMethodId: string;
-  installments: number;
-  issuerId?: string | number | null;
-  payerEmail: string;
-  identificationType: string;
-  identificationNumber: string;
-};
-
-export type CreateCardPaymentResult = {
-  paymentId: string;
-  status: string;
-  statusDetail: string | null;
-};
 
 type MpPaymentResponse = {
   id?: number | string;
@@ -112,145 +76,131 @@ type MpPaymentResponse = {
   status_detail?: string;
   transaction_amount?: number;
   external_reference?: string | null;
-  point_of_interaction?: {
-    transaction_data?: {
-      qr_code?: string;
-      qr_code_base64?: string;
-    };
-  };
+  payment_method_id?: string;
   message?: string;
   error?: string;
   cause?: Array<{ description?: string; code?: string | number }>;
 };
 
-function extractMpErrorMessage(data: MpPaymentResponse): string {
-  const cause = data.cause?.[0]?.description;
-  return (
-    cause ||
-    data.message ||
-    data.error ||
-    "Falha ao processar o pagamento no Mercado Pago."
-  );
-}
-
 function notificationUrl(): string {
   return `${getAppBaseUrl()}/api/webhooks/mercadopago?source_news=webhooks`;
 }
 
-/** Gera PIX dinâmico atrelado ao orderId (external_reference). */
-export async function createMercadoPagoPixPayment(
-  input: CreatePixPaymentInput
-): Promise<CreatePixPaymentResult> {
-  const token = getAccessToken();
-  const amount = Math.round(input.amount * 100) / 100;
+export type CheckoutProItem = {
+  id: string;
+  title: string;
+  quantity: number;
+  unitPrice: number;
+};
 
-  if (!Number.isFinite(amount) || amount < 0.01) {
-    throw new Error("Valor do pagamento PIX inválido.");
+export type CreateCheckoutProPreferenceInput = {
+  orderId: string;
+  accessToken: string;
+  items: CheckoutProItem[];
+  payerEmail: string;
+  payerName: string;
+};
+
+export type CreateCheckoutProPreferenceResult = {
+  preferenceId: string;
+  checkoutUrl: string;
+};
+
+/**
+ * Checkout Pro: cria preferência e devolve a URL do Mercado Pago.
+ * O cliente paga lá (PIX / crédito / débito) e volta pelas back_urls.
+ * POST https://api.mercadopago.com/checkout/preferences
+ */
+export async function createCheckoutProPreference(
+  input: CreateCheckoutProPreferenceInput
+): Promise<CreateCheckoutProPreferenceResult> {
+  const token = getAccessToken();
+  const base = getAppBaseUrl();
+
+  if (base.includes("localhost") || base.includes("127.0.0.1")) {
+    throw new Error(
+      "Checkout Pro exige NEXT_PUBLIC_APP_URL pública (HTTPS). " +
+        "Localhost não funciona no retorno do Mercado Pago — use o domínio da Vercel."
+    );
   }
 
+  const tokenQs = encodeURIComponent(input.accessToken);
+  const successUrl = `${base}/pedido/${input.orderId}/sucesso?token=${tokenQs}`;
+  const failureUrl = `${base}/pedido/${input.orderId}/falha?token=${tokenQs}`;
+  const pendingUrl = `${base}/pedido/${input.orderId}/pendente?token=${tokenQs}`;
+
   const body = {
-    transaction_amount: amount,
-    description: input.description.slice(0, 255),
-    payment_method_id: "pix",
-    external_reference: input.orderId,
-    notification_url: notificationUrl(),
+    items: input.items.map((item) => ({
+      id: item.id,
+      title: item.title.slice(0, 256),
+      quantity: item.quantity,
+      unit_price: Math.round(item.unitPrice * 100) / 100,
+      currency_id: "BRL",
+    })),
     payer: {
       email: input.payerEmail,
-      first_name: input.payerName.slice(0, 80) || "Cliente",
+      name: input.payerName.slice(0, 100) || "Cliente",
+    },
+    external_reference: input.orderId,
+    notification_url: notificationUrl(),
+    back_urls: {
+      success: successUrl,
+      failure: failureUrl,
+      pending: pendingUrl,
+    },
+    auto_return: "approved",
+    statement_descriptor: "DONA LU",
+    shipments: {
+      local_pickup: true,
+    },
+    // PIX + cartões (crédito/débito) — sem boleto/ticket.
+    payment_methods: {
+      excluded_payment_types: [{ id: "ticket" }],
+      installments: 12,
     },
   };
 
-  const response = await fetch(`${MP_API}/v1/payments`, {
+  const response = await fetch(`${MP_API}/checkout/preferences`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
-      "X-Idempotency-Key": `ddl-pix-${input.orderId}`,
+      "X-Idempotency-Key": `ddl-pref-${input.orderId}`,
     },
     body: JSON.stringify(body),
   });
 
-  const data = (await response.json()) as MpPaymentResponse;
+  const data = (await response.json()) as {
+    id?: string;
+    init_point?: string;
+    sandbox_init_point?: string;
+    message?: string;
+    error?: string;
+    cause?: Array<{ description?: string }>;
+  };
 
-  if (!response.ok || data.id == null) {
-    console.error("Mercado Pago create PIX failed:", data);
-    throw new Error(mapMercadoPagoError(extractMpErrorMessage(data)));
+  if (!response.ok || !data.id) {
+    console.error("Mercado Pago create preference failed:", data);
+    const msg =
+      data.cause?.[0]?.description ||
+      data.message ||
+      data.error ||
+      "Falha ao criar preferência de pagamento.";
+    throw new Error(mapMercadoPagoError(msg));
   }
 
-  const copyPaste = data.point_of_interaction?.transaction_data?.qr_code;
-  if (!copyPaste) {
-    throw new Error("Gateway não retornou o código PIX Copia e Cola.");
+  const isTestToken = token.startsWith("TEST-");
+  const checkoutUrl = isTestToken
+    ? data.sandbox_init_point || data.init_point
+    : data.init_point || data.sandbox_init_point;
+
+  if (!checkoutUrl) {
+    throw new Error("Mercado Pago não retornou a URL de checkout.");
   }
 
   return {
-    paymentId: String(data.id),
-    status: data.status ?? "pending",
-    copyPaste,
-    qrCodeBase64:
-      data.point_of_interaction?.transaction_data?.qr_code_base64 ?? null,
-  };
-}
-
-/**
- * Cria pagamento com cartão usando token gerado no frontend (Card Payment Brick).
- * O servidor NUNCA recebe número/CVV — só o token opaco do Mercado Pago.
- */
-export async function createMercadoPagoCardPayment(
-  input: CreateCardPaymentInput
-): Promise<CreateCardPaymentResult> {
-  const accessToken = getAccessToken();
-  const amount = Math.round(input.amount * 100) / 100;
-
-  if (!Number.isFinite(amount) || amount < 0.01) {
-    throw new Error("Valor do pagamento com cartão inválido.");
-  }
-  if (!input.token.trim()) {
-    throw new Error("Token do cartão ausente.");
-  }
-
-  const body: Record<string, unknown> = {
-    transaction_amount: amount,
-    token: input.token,
-    description: input.description.slice(0, 255),
-    installments: Math.max(1, Math.floor(input.installments || 1)),
-    payment_method_id: input.paymentMethodId,
-    external_reference: input.orderId,
-    notification_url: notificationUrl(),
-    payer: {
-      email: input.payerEmail,
-      identification: {
-        type: input.identificationType,
-        number: input.identificationNumber.replace(/\D/g, ""),
-      },
-    },
-  };
-
-  if (input.issuerId != null && String(input.issuerId).length > 0) {
-    body.issuer_id = String(input.issuerId);
-  }
-
-  const response = await fetch(`${MP_API}/v1/payments`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      // Nova tentativa = nova chave (token do cartão é de uso único).
-      "X-Idempotency-Key": `ddl-card-${input.orderId}-${input.token.slice(0, 16)}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const data = (await response.json()) as MpPaymentResponse;
-
-  if (!response.ok || data.id == null) {
-    console.error("Mercado Pago create card payment failed:", data);
-    throw new Error(mapMercadoPagoError(extractMpErrorMessage(data)));
-  }
-
-  return {
-    paymentId: String(data.id),
-    status: data.status ?? "pending",
-    statusDetail: data.status_detail ?? null,
+    preferenceId: data.id,
+    checkoutUrl,
   };
 }
 
@@ -260,12 +210,14 @@ export async function fetchMercadoPagoPayment(
 ): Promise<{
   id: string;
   status: string;
+  statusDetail: string | null;
   amount: number;
   externalReference: string | null;
+  paymentMethodId: string | null;
 }> {
-  const token = getAccessToken();
+  const accessToken = getAccessToken();
   const response = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
 
@@ -277,8 +229,10 @@ export async function fetchMercadoPagoPayment(
   return {
     id: String(data.id),
     status: data.status ?? "",
+    statusDetail: data.status_detail ?? null,
     amount: Number(data.transaction_amount ?? 0),
     externalReference: data.external_reference ?? null,
+    paymentMethodId: data.payment_method_id ?? null,
   };
 }
 

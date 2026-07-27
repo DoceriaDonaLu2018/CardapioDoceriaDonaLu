@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 export const metadata = {
   title: "Checkout — Doceria Dona Lu",
-  description: "Finalize seu pedido e pague com PIX.",
+  description: "Finalize seu pedido e pague no Mercado Pago.",
 };
 
 export default function CheckoutPage() {

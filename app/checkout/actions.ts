@@ -10,8 +10,7 @@ import {
   PICKUP_FULFILLMENT_LABEL,
 } from "@/lib/orders/constants";
 import {
-  createMercadoPagoCardPayment,
-  createMercadoPagoPixPayment,
+  createCheckoutProPreference,
   createPaymentAccessToken,
   mapMercadoPagoError,
 } from "@/lib/payments/mercadopago";
@@ -46,15 +45,6 @@ const checkoutSchema = z.object({
 const orderAuthSchema = z.object({
   orderId: z.string().min(8).max(64),
   accessToken: z.string().min(32).max(128),
-});
-
-const cardPaySchema = orderAuthSchema.extend({
-  token: z.string().min(10).max(256),
-  paymentMethodId: z.string().min(1).max(64),
-  installments: z.number().int().min(1).max(24),
-  issuerId: z.union([z.string(), z.number()]).optional().nullable(),
-  identificationType: z.string().min(2).max(20),
-  identificationNumber: z.string().min(5).max(20),
 });
 
 type ActionOk<T> = { success: true } & T;
@@ -110,7 +100,7 @@ async function assertRateLimits(phone: string): Promise<ActionErr | null> {
 
 /**
  * Cria o pedido ONLINE (AWAITING_PAYMENT) SEM chamar o gateway ainda.
- * O cliente escolhe PIX ou cartão na tela seguinte.
+ * O pagamento acontece no Checkout Pro do Mercado Pago (redirect).
  */
 export async function createOnlineOrder(
   rawInput: unknown
@@ -212,17 +202,13 @@ export async function createOnlineOrder(
   };
 }
 
-/** Garante PIX gerado (idempotente se já existir). */
-export async function ensurePixForOrder(
+/**
+ * Cria a preferência Checkout Pro e devolve a URL do Mercado Pago.
+ * O cliente é redirecionado para pagar (PIX / crédito / débito) e volta pelas back_urls.
+ */
+export async function startCheckoutProPayment(
   rawInput: unknown
-): Promise<
-  | ActionOk<{
-      pixCopyPaste: string;
-      pixQrCodeBase64: string | null;
-      totalAmount: number;
-    }>
-  | ActionErr
-> {
+): Promise<ActionOk<{ checkoutUrl: string }> | ActionErr> {
   const parsed = orderAuthSchema.safeParse(rawInput);
   if (!parsed.success) {
     return { success: false, error: "Pedido inválido." };
@@ -237,162 +223,60 @@ export async function ensurePixForOrder(
     },
     select: {
       id: true,
-      totalAmount: true,
       customerName: true,
       customerEmail: true,
-      paymentId: true,
-      pixCopyPaste: true,
-      pixQrCodeBase64: true,
+      paymentAccessToken: true,
+      items: {
+        select: {
+          productId: true,
+          productTitle: true,
+          quantity: true,
+          priceAtTime: true,
+        },
+      },
     },
   });
 
-  if (!order) {
+  if (!order || !order.paymentAccessToken) {
     return { success: false, error: "Pedido não encontrado ou já pago." };
   }
 
-  if (order.pixCopyPaste) {
-    return {
-      success: true,
-      pixCopyPaste: order.pixCopyPaste,
-      pixQrCodeBase64: order.pixQrCodeBase64,
-      totalAmount: order.totalAmount,
-    };
+  if (order.items.length === 0) {
+    return { success: false, error: "Pedido sem itens." };
   }
 
   try {
-    const pix = await createMercadoPagoPixPayment({
+    const preference = await createCheckoutProPreference({
       orderId: order.id,
-      amount: order.totalAmount,
-      description: `Pedido Doceria Dona Lu #${order.id.slice(-8).toUpperCase()}`,
+      accessToken: order.paymentAccessToken,
       payerEmail: order.customerEmail || "cliente@doceriadonalu.com",
       payerName: order.customerName,
+      items: order.items.map((item) => ({
+        id: item.productId,
+        title: item.productTitle,
+        quantity: item.quantity,
+        unitPrice: item.priceAtTime,
+      })),
     });
 
     await prisma.order.update({
       where: { id: order.id },
       data: {
-        paymentId: pix.paymentId,
-        paymentMethod: "pix",
-        pixCopyPaste: pix.copyPaste,
-        pixQrCodeBase64: pix.qrCodeBase64,
+        paymentMethod: "checkout_pro",
+        // Preferência ainda não é paymentId — só guarda referência auxiliar.
+        pixCopyPaste: `pref:${preference.preferenceId}`,
       },
     });
 
-    return {
-      success: true,
-      pixCopyPaste: pix.copyPaste,
-      pixQrCodeBase64: pix.qrCodeBase64,
-      totalAmount: order.totalAmount,
-    };
+    return { success: true, checkoutUrl: preference.checkoutUrl };
   } catch (error) {
-    console.error("ensurePixForOrder:", error);
+    console.error("startCheckoutProPayment:", error);
     return {
       success: false,
       error:
         error instanceof Error
           ? mapMercadoPagoError(error.message)
-          : "Não foi possível gerar o PIX.",
-    };
-  }
-}
-
-/**
- * Paga com cartão usando token do Card Payment Brick (PCI-safe).
- * Se o MP aprovar na hora, promove o pedido para PAID imediatamente.
- */
-export async function payOrderWithCard(
-  rawInput: unknown
-): Promise<
-  ActionOk<{ paymentId: string; status: string; paid: boolean }> | ActionErr
-> {
-  const parsed = cardPaySchema.safeParse(rawInput);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: parsed.error.issues[0]?.message ?? "Dados do cartão inválidos.",
-    };
-  }
-
-  const input = parsed.data;
-
-  const order = await prisma.order.findFirst({
-    where: {
-      id: input.orderId,
-      paymentAccessToken: input.accessToken,
-      source: OrderSource.ONLINE,
-      status: OrderStatus.AWAITING_PAYMENT,
-    },
-    select: {
-      id: true,
-      totalAmount: true,
-      customerEmail: true,
-      customerName: true,
-    },
-  });
-
-  if (!order) {
-    return { success: false, error: "Pedido não encontrado ou já pago." };
-  }
-
-  try {
-    const payment = await createMercadoPagoCardPayment({
-      orderId: order.id,
-      amount: order.totalAmount,
-      description: `Pedido Doceria Dona Lu #${order.id.slice(-8).toUpperCase()}`,
-      token: input.token,
-      paymentMethodId: input.paymentMethodId,
-      installments: input.installments,
-      issuerId: input.issuerId,
-      payerEmail: order.customerEmail || "cliente@doceriadonalu.com",
-      identificationType: input.identificationType,
-      identificationNumber: input.identificationNumber,
-    });
-
-    const approved = payment.status === "approved";
-
-    await prisma.order.update({
-      where: { id: order.id },
-      data: {
-        paymentId: payment.paymentId,
-        paymentMethod: input.paymentMethodId,
-        ...(approved
-          ? { status: OrderStatus.PAID, paidAt: new Date() }
-          : {}),
-      },
-    });
-
-    if (
-      !approved &&
-      payment.status !== "pending" &&
-      payment.status !== "in_process"
-    ) {
-      return {
-        success: false,
-        error:
-          payment.statusDetail === "cc_rejected_insufficient_amount"
-            ? "Cartão sem limite suficiente."
-            : payment.statusDetail === "cc_rejected_bad_filled_security_code"
-              ? "Código de segurança (CVV) inválido."
-              : payment.statusDetail === "cc_rejected_bad_filled_date"
-                ? "Data de validade inválida."
-                : `Pagamento não aprovado (${payment.status}). Tente outro cartão ou PIX.`,
-      };
-    }
-
-    return {
-      success: true,
-      paymentId: payment.paymentId,
-      status: payment.status,
-      paid: approved,
-    };
-  } catch (error) {
-    console.error("payOrderWithCard:", error);
-    return {
-      success: false,
-      error:
-        error instanceof Error
-          ? mapMercadoPagoError(error.message)
-          : "Não foi possível pagar com cartão.",
+          : "Não foi possível abrir o pagamento no Mercado Pago.",
     };
   }
 }
