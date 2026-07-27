@@ -206,13 +206,13 @@ export function CheckoutForm() {
           ) : (
             <>
               <Lock className="h-4 w-4" />
-              Ir para o Mercado Pago
+              Escolher forma de pagamento
             </>
           )}
         </Button>
 
         <p className="text-center text-xs text-stone-400">
-          Você será redirecionado ao Mercado Pago (PIX, crédito ou débito). O
+          Na próxima tela você escolhe PIX ou cartão e paga no Mercado Pago. O
           pedido só vai para a cozinha após a confirmação do pagamento.
         </p>
       </aside>

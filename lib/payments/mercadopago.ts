@@ -81,17 +81,46 @@ export type CheckoutProItem = {
   unitPrice: number;
 };
 
+export type CheckoutProPaymentChoice = "pix" | "card";
+
 export type CreateCheckoutProPreferenceInput = {
   orderId: string;
   accessToken: string;
   items: CheckoutProItem[];
   payerEmail: string;
   payerName: string;
+  paymentChoice: CheckoutProPaymentChoice;
 };
+
+function paymentMethodsForChoice(choice: CheckoutProPaymentChoice) {
+  if (choice === "pix") {
+    // Só PIX (bank_transfer) — sem cartão / boleto.
+    return {
+      excluded_payment_types: [
+        { id: "credit_card" },
+        { id: "debit_card" },
+        { id: "ticket" },
+        { id: "atm" },
+        { id: "prepaid_card" },
+      ],
+      installments: 1,
+    };
+  }
+
+  // Só cartão (crédito/débito) — sem PIX / boleto.
+  return {
+    excluded_payment_types: [
+      { id: "ticket" },
+      { id: "bank_transfer" },
+      { id: "atm" },
+    ],
+    installments: 12,
+  };
+}
 
 /**
  * Checkout Pro: cria preferência e devolve a URL do Mercado Pago.
- * O cliente paga lá (PIX / crédito / débito) e volta pelas back_urls.
+ * O cliente escolhe PIX ou cartão no site; no MP só aparece o meio escolhido.
  */
 export async function createCheckoutProPreference(
   input: CreateCheckoutProPreferenceInput
@@ -107,9 +136,15 @@ export async function createCheckoutProPreference(
   }
 
   const tokenQs = encodeURIComponent(input.accessToken);
-  const successUrl = `${base}/pedido/${input.orderId}/sucesso?token=${tokenQs}`;
-  const failureUrl = `${base}/pedido/${input.orderId}/falha?token=${tokenQs}`;
-  const pendingUrl = `${base}/pedido/${input.orderId}/pendente?token=${tokenQs}`;
+
+  // back_urls — espelha a doc do Checkout Pro (success / failure / pending).
+  // O MP anexa na volta: payment_id, status, external_reference, etc. (GET).
+  // Não use localhost — só domínio HTTPS público (NEXT_PUBLIC_APP_URL).
+  const back_urls = {
+    success: `${base}/pedido/${input.orderId}/sucesso?token=${tokenQs}`,
+    failure: `${base}/pedido/${input.orderId}/falha?token=${tokenQs}`,
+    pending: `${base}/pedido/${input.orderId}/pendente?token=${tokenQs}`,
+  };
 
   const body = {
     items: input.items.map((item) => ({
@@ -123,22 +158,17 @@ export async function createCheckoutProPreference(
       email: input.payerEmail,
       name: input.payerName.slice(0, 100) || "Cliente",
     },
+    // Sincroniza com o orderId no retorno (external_reference na query).
     external_reference: input.orderId,
     notification_url: notificationUrl(),
-    back_urls: {
-      success: successUrl,
-      failure: failureUrl,
-      pending: pendingUrl,
-    },
-    auto_return: "approved",
+    back_urls,
+    // Redireciona sozinho quando aprovado (até ~40s) + botão "Voltar ao site".
+    auto_return: "approved" as const,
     statement_descriptor: "DONA LU",
     shipments: {
       local_pickup: true,
     },
-    payment_methods: {
-      excluded_payment_types: [{ id: "ticket" }],
-      installments: 12,
-    },
+    payment_methods: paymentMethodsForChoice(input.paymentChoice),
   };
 
   const response = await fetch(`${MP_API}/checkout/preferences`, {
@@ -146,7 +176,8 @@ export async function createCheckoutProPreference(
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
-      "X-Idempotency-Key": `ddl-pref-${input.orderId}`,
+      // Chave distinta por meio — trocar PIX↔cartão gera preferência correta.
+      "X-Idempotency-Key": `ddl-pref-${input.orderId}-${input.paymentChoice}`,
     },
     body: JSON.stringify(body),
   });

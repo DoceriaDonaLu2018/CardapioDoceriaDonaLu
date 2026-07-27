@@ -5,6 +5,7 @@ import { Clock3, RefreshCw } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { OrderStatus } from "@/lib/orders/constants";
 import { formatPrice } from "@/lib/format";
+import { parseMercadoPagoReturnParams } from "@/lib/payments/mp-return";
 import { syncOrderPaymentFromGateway } from "@/lib/payments/sync-order-payment";
 import { Button } from "@/components/ui/button";
 import { PendingPaymentPoller } from "./pending-payment-poller";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ orderId: string }>;
-  searchParams: Promise<{ token?: string; payment_id?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export default async function PedidoPendentePage({
@@ -21,11 +22,32 @@ export default async function PedidoPendentePage({
   searchParams,
 }: PageProps) {
   const { orderId } = await params;
-  const { token, payment_id: paymentIdRaw } = await searchParams;
+  const qs = await searchParams;
+  const token = typeof qs.token === "string" ? qs.token : null;
   if (!token) notFound();
 
-  const paymentId =
-    paymentIdRaw && paymentIdRaw !== "null" ? paymentIdRaw : null;
+  const mp = parseMercadoPagoReturnParams(qs);
+  if (mp.externalReference && mp.externalReference !== orderId) {
+    notFound();
+  }
+
+  const paymentId = mp.paymentId;
+
+  if (mp.status === "approved") {
+    redirect(
+      `/pedido/${orderId}/sucesso?token=${encodeURIComponent(token)}${
+        paymentId ? `&payment_id=${encodeURIComponent(paymentId)}` : ""
+      }`
+    );
+  }
+  if (
+    mp.status &&
+    ["rejected", "cancelled", "canceled", "refunded"].includes(mp.status)
+  ) {
+    redirect(
+      `/pedido/${orderId}/falha?token=${encodeURIComponent(token)}&motivo=${encodeURIComponent(`Pagamento ${mp.status}`)}`
+    );
+  }
 
   if (paymentId) {
     let syncPaid = false;

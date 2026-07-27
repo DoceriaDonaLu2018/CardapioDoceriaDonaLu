@@ -46,6 +46,10 @@ const orderAuthSchema = z.object({
   accessToken: z.string().min(32).max(128),
 });
 
+const checkoutProPaySchema = orderAuthSchema.extend({
+  paymentChoice: z.enum(["pix", "card"]),
+});
+
 type ActionOk<T> = { success: true } & T;
 type ActionErr = { success: false; error: string };
 
@@ -54,9 +58,8 @@ function normalizePhone(value: string): string {
 }
 
 /**
- * Limite por WhatsApp: 5 pedidos online por hora (janela rolante).
- * Depois de 1h desde o 1º desses 5, libera novamente.
- * IP só freia flood abusivo.
+ * Limite por WhatsApp: 5 pedidos finalizados por hora (PAID ou CANCELED).
+ * Pedidos só em AWAITING_PAYMENT (ainda escolhendo/pagando) NÃO contam.
  */
 async function assertRateLimits(phone: string): Promise<ActionErr | null> {
   const hdrs = await headers();
@@ -74,15 +77,18 @@ async function assertRateLimits(phone: string): Promise<ActionErr | null> {
   }
 
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const recentByPhone = await prisma.order.count({
+  const recentFinalized = await prisma.order.count({
     where: {
       source: OrderSource.ONLINE,
       customerPhone: phone,
       createdAt: { gte: oneHourAgo },
+      status: {
+        in: [OrderStatus.PAID, OrderStatus.COMPLETED, OrderStatus.CANCELED],
+      },
     },
   });
 
-  if (recentByPhone >= 5) {
+  if (recentFinalized >= 5) {
     return {
       success: false,
       error:
@@ -198,16 +204,18 @@ export async function createOnlineOrder(
 }
 
 /**
- * Cria a preferência Checkout Pro e devolve a URL do Mercado Pago.
- * O cliente é redirecionado para pagar (PIX / crédito / débito) e volta pelas back_urls.
+ * Cria a preferência Checkout Pro conforme a escolha (PIX ou cartão)
+ * e devolve a URL do Mercado Pago.
  */
 export async function startCheckoutProPayment(
   rawInput: unknown
 ): Promise<ActionOk<{ checkoutUrl: string }> | ActionErr> {
-  const parsed = orderAuthSchema.safeParse(rawInput);
+  const parsed = checkoutProPaySchema.safeParse(rawInput);
   if (!parsed.success) {
-    return { success: false, error: "Pedido inválido." };
+    return { success: false, error: "Escolha PIX ou cartão para continuar." };
   }
+
+  const { paymentChoice } = parsed.data;
 
   const order = await prisma.order.findFirst({
     where: {
@@ -246,12 +254,20 @@ export async function startCheckoutProPayment(
       accessToken: order.paymentAccessToken,
       payerEmail: order.customerEmail || "cliente@doceriadonalu.com",
       payerName: order.customerName,
+      paymentChoice,
       items: order.items.map((item) => ({
         id: item.productId,
         title: item.productTitle,
         quantity: item.quantity,
         unitPrice: item.priceAtTime,
       })),
+    });
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        paymentMethod: paymentChoice === "pix" ? "pix" : "card",
+      },
     });
 
     return { success: true, checkoutUrl: preference.checkoutUrl };

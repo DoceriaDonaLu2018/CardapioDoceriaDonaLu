@@ -5,13 +5,14 @@ import { AlertCircle, CreditCard, QrCode, RotateCcw } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { OrderStatus } from "@/lib/orders/constants";
 import { formatPrice } from "@/lib/format";
+import { parseMercadoPagoReturnParams } from "@/lib/payments/mp-return";
 import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ orderId: string }>;
-  searchParams: Promise<{ token?: string; motivo?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 function friendlyReason(motivo?: string | null): string {
@@ -36,6 +37,9 @@ function friendlyReason(motivo?: string | null): string {
   if (lower.includes("rejected") || lower.includes("recus")) {
     return "O pagamento foi recusado. Tente novamente com outro meio no Mercado Pago.";
   }
+  if (lower.includes("cancelled") || lower.includes("canceled")) {
+    return "O pagamento foi cancelado antes de concluir.";
+  }
   return raw;
 }
 
@@ -44,8 +48,30 @@ export default async function PedidoFalhaPage({
   searchParams,
 }: PageProps) {
   const { orderId } = await params;
-  const { token, motivo } = await searchParams;
+  const qs = await searchParams;
+  const token = typeof qs.token === "string" ? qs.token : null;
   if (!token) notFound();
+
+  const mp = parseMercadoPagoReturnParams(qs);
+  if (mp.externalReference && mp.externalReference !== orderId) {
+    notFound();
+  }
+
+  // Se o MP redirecionou para failure mas o status veio approved/pending, corrige a rota.
+  if (mp.status === "approved") {
+    redirect(
+      `/pedido/${orderId}/sucesso?token=${encodeURIComponent(token)}${
+        mp.paymentId ? `&payment_id=${encodeURIComponent(mp.paymentId)}` : ""
+      }`
+    );
+  }
+  if (mp.status === "pending" || mp.status === "in_process") {
+    redirect(
+      `/pedido/${orderId}/pendente?token=${encodeURIComponent(token)}${
+        mp.paymentId ? `&payment_id=${encodeURIComponent(mp.paymentId)}` : ""
+      }`
+    );
+  }
 
   const order = await prisma.order.findFirst({
     where: {
@@ -76,7 +102,10 @@ export default async function PedidoFalhaPage({
   const firstName = order.customerName.split(" ")[0] || "cliente";
   const shortId = order.id.slice(-8).toUpperCase();
   const payUrl = `/pedido/${order.id}/pagar?token=${encodeURIComponent(order.paymentAccessToken)}`;
-  const reason = friendlyReason(motivo);
+  const motivoFromQs = typeof qs.motivo === "string" ? qs.motivo : null;
+  const reason = friendlyReason(
+    motivoFromQs || (mp.status ? `Pagamento ${mp.status}` : null)
+  );
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-stone-50 px-4 py-12">

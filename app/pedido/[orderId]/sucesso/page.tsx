@@ -5,6 +5,7 @@ import { CheckCircle2, Clock3, MapPin, MessageCircle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { OrderStatus, PICKUP_FULFILLMENT_LABEL } from "@/lib/orders/constants";
 import { formatPhone, formatPrice } from "@/lib/format";
+import { parseMercadoPagoReturnParams } from "@/lib/payments/mp-return";
 import { syncOrderPaymentFromGateway } from "@/lib/payments/sync-order-payment";
 import { Button } from "@/components/ui/button";
 
@@ -12,18 +13,13 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ orderId: string }>;
-  searchParams: Promise<{
-    token?: string;
-    payment_id?: string;
-    collection_id?: string;
-    status?: string;
-    collection_status?: string;
-  }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 function paymentMethodLabel(method: string | null): string {
   if (!method || method === "checkout_pro") return "Mercado Pago";
   if (method === "pix") return "PIX";
+  if (method === "card") return "Cartão";
   if (method === "account_money") return "Saldo Mercado Pago";
   if (
     ["visa", "master", "amex", "elo", "hipercard", "debvisa", "debmaster"].includes(
@@ -41,12 +37,34 @@ export default async function PedidoSucessoPage({
 }: PageProps) {
   const { orderId } = await params;
   const qs = await searchParams;
-  const token = qs.token;
+  const token = typeof qs.token === "string" ? qs.token : null;
   if (!token) notFound();
 
-  const paymentIdRaw = qs.payment_id || qs.collection_id;
-  const paymentId =
-    paymentIdRaw && paymentIdRaw !== "null" ? paymentIdRaw : null;
+  const mp = parseMercadoPagoReturnParams(qs);
+
+  // Proteção: external_reference da query deve bater com o pedido da URL.
+  if (mp.externalReference && mp.externalReference !== orderId) {
+    notFound();
+  }
+
+  const paymentId = mp.paymentId;
+
+  // Se o MP mandou status pending/rejected na URL de success, redireciona.
+  if (mp.status === "pending" || mp.status === "in_process") {
+    redirect(
+      `/pedido/${orderId}/pendente?token=${encodeURIComponent(token)}${
+        paymentId ? `&payment_id=${encodeURIComponent(paymentId)}` : ""
+      }`
+    );
+  }
+  if (
+    mp.status &&
+    ["rejected", "cancelled", "canceled", "refunded"].includes(mp.status)
+  ) {
+    redirect(
+      `/pedido/${orderId}/falha?token=${encodeURIComponent(token)}&motivo=${encodeURIComponent(`Pagamento ${mp.status}`)}`
+    );
+  }
 
   // Retorno do Checkout Pro: sincroniza com o gateway se o webhook ainda não rodou.
   if (paymentId) {
@@ -127,7 +145,9 @@ export default async function PedidoSucessoPage({
   const isPickup =
     !order.deliveryAddress ||
     order.deliveryAddress === PICKUP_FULFILLMENT_LABEL;
-  const methodLabel = paymentMethodLabel(order.paymentMethod);
+  const methodLabel = paymentMethodLabel(
+    order.paymentMethod || mp.paymentType
+  );
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-stone-50 px-4 py-12">
