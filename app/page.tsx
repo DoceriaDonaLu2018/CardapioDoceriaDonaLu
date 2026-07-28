@@ -1,33 +1,38 @@
 import Link from "next/link";
 
 import { prisma } from "@/lib/prisma";
+import { getHighlightedReviews } from "@/lib/reviews/queries";
 import { CatalogShell } from "@/components/catalog/catalog-shell";
 import { ProductCard } from "@/components/ProductCard";
+import { HighlightedReviewsSection } from "@/components/reviews/review-cards";
 
 /** Cardápio público: ISR 60s — invalidado também via revalidatePath nas mutations. */
 export const revalidate = 60;
 
 export default async function Home() {
-  const categories = await prisma.category.findMany({
-    orderBy: { order: "asc" },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      products: {
-        where: { isAvailable: true, isDeleted: false },
-        orderBy: { title: "asc" },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          imageUrl: true,
-          price: true,
-          stockQuantity: true,
+  const [categories, highlightedReviews] = await Promise.all([
+    prisma.category.findMany({
+      orderBy: { order: "asc" },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        products: {
+          where: { isAvailable: true, isDeleted: false },
+          orderBy: { title: "asc" },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            imageUrl: true,
+            price: true,
+            stockQuantity: true,
+          },
         },
       },
-    },
-  });
+    }),
+    getHighlightedReviews(3),
+  ]);
 
   const visibleCategories = categories.filter(
     (category) => category.products.length > 0
@@ -89,6 +94,8 @@ export default async function Home() {
           ))
         )}
       </div>
+
+      <HighlightedReviewsSection reviews={highlightedReviews} />
     </CatalogShell>
   );
 }

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Eye, EyeOff, Loader2, Star, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Sparkles, Star, Trash2 } from "lucide-react";
 
 import {
   createManualReview,
   deleteReview,
+  toggleReviewHighlight,
   toggleReviewVisibility,
 } from "@/app/admin/avaliacoes/actions";
 import { formatPhone } from "@/lib/format";
@@ -28,6 +29,7 @@ export type AdminReviewRow = {
   rating: number;
   comment: string;
   isVisible: boolean;
+  isHighlighted: boolean;
   isManual: boolean;
   createdAt: string;
   productTitle: string;
@@ -83,8 +85,37 @@ export function AvaliacoesAdminClient({
       }
       setReviews((current) =>
         current.map((row) =>
-          row.id === id ? { ...row, isVisible: !row.isVisible } : row
+          row.id === id
+            ? {
+                ...row,
+                isVisible: !row.isVisible,
+                // Ocultar remove destaque visualmente; o server pode manter o flag.
+                isHighlighted: row.isVisible ? false : row.isHighlighted,
+              }
+            : row
         )
+      );
+    });
+  }
+
+  function handleToggleHighlight(id: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await toggleReviewHighlight(id);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setReviews((current) =>
+        current.map((row) => {
+          if (row.id !== id) return row;
+          const next = !row.isHighlighted;
+          return {
+            ...row,
+            isHighlighted: next,
+            isVisible: next ? true : row.isVisible,
+          };
+        })
       );
     });
   }
@@ -245,6 +276,11 @@ export function AvaliacoesAdminClient({
                       >
                         {review.isVisible ? "Visível" : "Oculta"}
                       </span>
+                      {review.isHighlighted && (
+                        <span className="rounded-full bg-coffee-50 px-2 py-0.5 text-[10px] font-medium uppercase text-coffee-700">
+                          Destaque home
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 flex items-center gap-0.5">
                       {Array.from({ length: 5 }).map((_, index) => (
@@ -269,6 +305,26 @@ export function AvaliacoesAdminClient({
                     </p>
                   </div>
                   <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className={
+                        review.isHighlighted
+                          ? "h-9 w-9 border-coffee-300 bg-coffee-50 text-coffee-700"
+                          : "h-9 w-9"
+                      }
+                      disabled={isPending}
+                      title="Destacar na Página Inicial"
+                      aria-label={
+                        review.isHighlighted
+                          ? "Remover destaque da página inicial"
+                          : "Destacar na página inicial"
+                      }
+                      onClick={() => handleToggleHighlight(review.id)}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"

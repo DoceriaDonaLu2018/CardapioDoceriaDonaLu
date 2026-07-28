@@ -81,15 +81,60 @@ export async function toggleReviewVisibility(
     });
     if (!existing) return { error: "Avaliação não encontrada." };
 
+    const nextVisible = !existing.isVisible;
+
     await prisma.review.update({
       where: { id: parsedId.data },
-      data: { isVisible: !existing.isVisible },
+      data: {
+        isVisible: nextVisible,
+        // Ocultar tira da home automaticamente.
+        ...(nextVisible ? {} : { isHighlighted: false }),
+      },
     });
     revalidateReviews();
     return { success: true };
   } catch (error) {
     console.error("toggleReviewVisibility:", error);
     return { error: "Não foi possível atualizar a visibilidade." };
+  }
+}
+
+export async function toggleReviewHighlight(
+  reviewId: string
+): Promise<ReviewAdminState> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "Sessão expirada. Faça login novamente." };
+  }
+
+  const parsedId = idSchema.safeParse(reviewId);
+  if (!parsedId.success) return { error: "Avaliação inválida." };
+
+  try {
+    const existing = await prisma.review.findUnique({
+      where: { id: parsedId.data },
+      select: { isHighlighted: true, isVisible: true },
+    });
+    if (!existing) return { error: "Avaliação não encontrada." };
+
+    const nextHighlighted = !existing.isHighlighted;
+
+    // Só permite destacar se estiver visível (ou ao destacar, força visível).
+    await prisma.review.update({
+      where: { id: parsedId.data },
+      data: {
+        isHighlighted: nextHighlighted,
+        ...(nextHighlighted && !existing.isVisible
+          ? { isVisible: true }
+          : {}),
+      },
+    });
+    revalidateReviews();
+    return { success: true };
+  } catch (error) {
+    console.error("toggleReviewHighlight:", error);
+    return { error: "Não foi possível atualizar o destaque." };
   }
 }
 

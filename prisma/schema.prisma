@@ -59,11 +59,13 @@ model Review {
   rating        Int // 1..5
   comment       String
   isVisible     Boolean  @default(false) // admin libera no site público
+  isHighlighted Boolean  @default(false) // destaque na página inicial (máx. 3 na query)
   isManual      Boolean  @default(false) // criado pelo administrador
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@index([productId, isVisible])
+  @@index([isVisible, isHighlighted])
   @@index([customerPhone, createdAt])
 }
 

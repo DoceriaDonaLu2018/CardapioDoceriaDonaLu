@@ -15,6 +15,7 @@ export default async function AvaliacoesAdminPage() {
         rating: true,
         comment: true,
         isVisible: true,
+        isHighlighted: true,
         isManual: true,
         createdAt: true,
         product: { select: { title: true } },
@@ -34,7 +35,8 @@ export default async function AvaliacoesAdminPage() {
           Avaliações
         </h1>
         <p className="mt-1 text-stone-500">
-          Modere feedbacks verificados e publique avaliações manuais.
+          Modere feedbacks, destaque até 3 na home e publique avaliações
+          manuais.
         </p>
       </div>
 
@@ -47,6 +49,7 @@ export default async function AvaliacoesAdminPage() {
           rating: review.rating,
           comment: review.comment,
           isVisible: review.isVisible,
+          isHighlighted: review.isHighlighted,
           isManual: review.isManual,
           createdAt: review.createdAt.toISOString(),
           productTitle: review.product.title,

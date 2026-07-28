@@ -4,19 +4,26 @@ import { EstoqueClient } from "./estoque-client";
 export const dynamic = "force-dynamic";
 
 export default async function EstoquePage() {
-  const products = await prisma.product.findMany({
-    where: { isDeleted: false },
-    orderBy: [{ category: { order: "asc" } }, { title: "asc" }],
-    select: {
-      id: true,
-      title: true,
-      imageUrl: true,
-      price: true,
-      stockQuantity: true,
-      isAvailable: true,
-      category: { select: { name: true } },
-    },
-  });
+  const [products, categories] = await Promise.all([
+    prisma.product.findMany({
+      where: { isDeleted: false },
+      orderBy: [{ category: { order: "asc" } }, { title: "asc" }],
+      select: {
+        id: true,
+        title: true,
+        imageUrl: true,
+        price: true,
+        stockQuantity: true,
+        isAvailable: true,
+        categoryId: true,
+        category: { select: { name: true } },
+      },
+    }),
+    prisma.category.findMany({
+      orderBy: { order: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -31,6 +38,7 @@ export default async function EstoquePage() {
       </div>
 
       <EstoqueClient
+        categories={categories}
         products={products.map((product) => ({
           id: product.id,
           title: product.title,
@@ -38,6 +46,7 @@ export default async function EstoquePage() {
           price: product.price,
           stockQuantity: product.stockQuantity,
           isAvailable: product.isAvailable,
+          categoryId: product.categoryId,
           categoryName: product.category?.name ?? "Sem categoria",
         }))}
       />
