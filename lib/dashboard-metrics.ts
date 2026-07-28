@@ -38,6 +38,15 @@ export type PreferredPaymentMethod = {
   count: number;
 };
 
+/** Estatística por forma de pagamento (já normalizada para buckets canônicos). */
+export type PaymentMethodStats = {
+  method: string;
+  label: string;
+  orderCount: number;
+  /** Soma exata de Order.totalAmount no bucket (centavos arredondados). */
+  revenue: number;
+};
+
 export type DashboardData = {
   today: PeriodMetrics;
   week: PeriodMetrics;
@@ -46,6 +55,8 @@ export type DashboardData = {
   categorySales: CategorySales[];
   weeklyEvolution: DailySales[];
   preferredPaymentMethod: PreferredPaymentMethod;
+  /** Top 3 formas de pagamento (pedidos + valor). */
+  topPaymentMethods: PaymentMethodStats[];
 };
 
 type RawTotals = {
@@ -259,61 +270,96 @@ async function getWeeklyEvolution(since: Date): Promise<DailySales[]> {
   return result;
 }
 
+type PaymentMethodAgg = {
+  orderCount: number;
+  revenue: number;
+};
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 /**
- * Método de pagamento mais usado (agregação no banco via groupBy).
- * Ignora pedidos antigos com paymentMethod null/vazio.
- * Agrupa bandeiras MP (visa, master…) nos buckets canônicos.
+ * Agrega formas de pagamento no banco (COUNT + SUM), normaliza buckets
+ * (pix/card/master → canônicos) e devolve top N + preferido.
+ * Ignora null/vazio. Prepared statement — sem input do usuário na SQL.
  */
-async function getPreferredPaymentMethod(): Promise<PreferredPaymentMethod> {
-  const empty: PreferredPaymentMethod = {
+async function getPaymentMethodBreakdown(limit = 3): Promise<{
+  preferred: PreferredPaymentMethod;
+  top: PaymentMethodStats[];
+}> {
+  const emptyPreferred: PreferredPaymentMethod = {
     label: null,
     method: null,
     count: 0,
   };
 
+  type Row = {
+    payment_method: string | null;
+    order_count: number | string | null;
+    revenue: number | string | null;
+  };
+
   try {
-    const groups = await prisma.order.groupBy({
-      by: ["paymentMethod"],
-      where: {
-        paymentMethod: { not: null },
-        // Só vendas efetivas — alinhado às demais métricas financeiras.
-        status: { in: ["COMPLETED", "PAID", "PENDING"] },
-      },
-      _count: { _all: true },
-      orderBy: { _count: { paymentMethod: "desc" } },
-    });
+    // SQLi-safe: tagged template Prisma. Sem interpolação de string do cliente.
+    const rows = await prisma.$queryRaw<Row[]>`
+      SELECT
+        o."paymentMethod" AS payment_method,
+        COUNT(*)::int AS order_count,
+        COALESCE(SUM(o."totalAmount"), 0) AS revenue
+      FROM orders o
+      WHERE o.status IN ('COMPLETED', 'PAID', 'PENDING')
+        AND o."paymentMethod" IS NOT NULL
+        AND BTRIM(o."paymentMethod") <> ''
+      GROUP BY o."paymentMethod"
+    `;
 
-    const tallies = new Map<string, number>();
+    const tallies = new Map<string, PaymentMethodAgg>();
 
-    for (const row of groups) {
-      const raw = row.paymentMethod?.trim();
-      if (!raw) continue; // fallback: null / string vazia
+    for (const row of rows) {
+      const raw = row.payment_method?.trim();
+      if (!raw) continue;
 
       const bucket = canonicalizePaymentMethod(raw) ?? "other";
-      tallies.set(bucket, (tallies.get(bucket) ?? 0) + row._count._all);
+      const prev = tallies.get(bucket) ?? { orderCount: 0, revenue: 0 };
+      tallies.set(bucket, {
+        orderCount: prev.orderCount + toNumber(row.order_count),
+        revenue: prev.revenue + toNumber(row.revenue),
+      });
     }
 
-    if (tallies.size === 0) return empty;
-
-    let winner: string | null = null;
-    let winnerCount = 0;
-    for (const [method, count] of tallies) {
-      if (count > winnerCount) {
-        winner = method;
-        winnerCount = count;
-      }
+    if (tallies.size === 0) {
+      return { preferred: emptyPreferred, top: [] };
     }
 
-    if (!winner) return empty;
+    const ranked = [...tallies.entries()]
+      .map(([method, agg]) => ({
+        method,
+        label: formatPaymentMethodLabel(method),
+        orderCount: agg.orderCount,
+        revenue: roundMoney(agg.revenue),
+      }))
+      // Desempate estável: mais pedidos → maior receita → rótulo.
+      .sort((a, b) => {
+        if (b.orderCount !== a.orderCount) return b.orderCount - a.orderCount;
+        if (b.revenue !== a.revenue) return b.revenue - a.revenue;
+        return a.label.localeCompare(b.label, "pt-BR");
+      });
+
+    const top = ranked.slice(0, Math.max(1, limit));
+    const winner = ranked[0];
 
     return {
-      method: winner,
-      label: formatPaymentMethodLabel(winner),
-      count: winnerCount,
+      preferred: {
+        method: winner.method,
+        label: winner.label,
+        count: winner.orderCount,
+      },
+      top,
     };
   } catch (error) {
-    console.error("getPreferredPaymentMethod:", error);
-    return empty;
+    console.error("getPaymentMethodBreakdown:", error);
+    return { preferred: emptyPreferred, top: [] };
   }
 }
 
@@ -328,13 +374,13 @@ export async function getDashboardData(): Promise<DashboardData> {
     topProducts,
     categorySales,
     weeklyEvolution,
-    preferredPaymentMethod,
+    paymentBreakdown,
   ] = await Promise.all([
     getPeriodMetricsBatch(startOfToday, startOfWeek, startOfMonth),
     getTopProducts(7),
     getCategorySales(startOfMonth),
     getWeeklyEvolution(startOfWeek),
-    getPreferredPaymentMethod(),
+    getPaymentMethodBreakdown(3),
   ]);
 
   return {
@@ -344,6 +390,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     topProducts,
     categorySales,
     weeklyEvolution,
-    preferredPaymentMethod,
+    preferredPaymentMethod: paymentBreakdown.preferred,
+    topPaymentMethods: paymentBreakdown.top,
   };
 }

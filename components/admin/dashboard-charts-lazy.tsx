@@ -36,3 +36,18 @@ export const WeeklyEvolutionChart = nextDynamic(
     ),
   }
 );
+
+export const PaymentMethodsChart = nextDynamic(
+  () =>
+    import("@/components/admin/dashboard-charts").then(
+      (mod) => mod.PaymentMethodsChart
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[260px] items-center justify-center text-sm text-stone-400">
+        Carregando gráfico…
+      </div>
+    ),
+  }
+);

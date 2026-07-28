@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { CategorySalesList } from "@/components/admin/category-sales-list";
 import {
+  PaymentMethodsChart,
   TopProductsChart,
   WeeklyEvolutionChart,
 } from "@/components/admin/dashboard-charts-lazy";
@@ -137,6 +138,21 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg text-stone-800">
+            Top 3 Formas de Pagamento
+          </CardTitle>
+          <CardDescription>
+            Pedidos e valor total por método (Pix, cartões e dinheiro
+            normalizados). Pedidos sem forma registrada são ignorados.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PaymentMethodsChart data={data.topPaymentMethods} />
+        </CardContent>
+      </Card>
     </div>
   );
 }
