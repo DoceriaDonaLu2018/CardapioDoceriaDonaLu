@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import {
+  canonicalizePaymentMethod,
+  formatPaymentMethodLabel,
+} from "@/lib/receipt";
 import { BRASILIA_TZ, getBrasiliaStartOfDay, subtractDays } from "@/lib/timezone";
 
 export type PeriodMetrics = {
@@ -26,6 +30,14 @@ export type DailySales = {
   revenue: number;
 };
 
+export type PreferredPaymentMethod = {
+  /** rótulo amigável (ex.: "Pix") ou null se não houver dados */
+  label: string | null;
+  /** valor canônico: pix | cash | credit_card | debit_card | other */
+  method: string | null;
+  count: number;
+};
+
 export type DashboardData = {
   today: PeriodMetrics;
   week: PeriodMetrics;
@@ -33,6 +45,7 @@ export type DashboardData = {
   topProducts: TopProduct[];
   categorySales: CategorySales[];
   weeklyEvolution: DailySales[];
+  preferredPaymentMethod: PreferredPaymentMethod;
 };
 
 type RawTotals = {
@@ -246,19 +259,83 @@ async function getWeeklyEvolution(since: Date): Promise<DailySales[]> {
   return result;
 }
 
+/**
+ * Método de pagamento mais usado (agregação no banco via groupBy).
+ * Ignora pedidos antigos com paymentMethod null/vazio.
+ * Agrupa bandeiras MP (visa, master…) nos buckets canônicos.
+ */
+async function getPreferredPaymentMethod(): Promise<PreferredPaymentMethod> {
+  const empty: PreferredPaymentMethod = {
+    label: null,
+    method: null,
+    count: 0,
+  };
+
+  try {
+    const groups = await prisma.order.groupBy({
+      by: ["paymentMethod"],
+      where: {
+        paymentMethod: { not: null },
+        // Só vendas efetivas — alinhado às demais métricas financeiras.
+        status: { in: ["COMPLETED", "PAID", "PENDING"] },
+      },
+      _count: { _all: true },
+      orderBy: { _count: { paymentMethod: "desc" } },
+    });
+
+    const tallies = new Map<string, number>();
+
+    for (const row of groups) {
+      const raw = row.paymentMethod?.trim();
+      if (!raw) continue; // fallback: null / string vazia
+
+      const bucket = canonicalizePaymentMethod(raw) ?? "other";
+      tallies.set(bucket, (tallies.get(bucket) ?? 0) + row._count._all);
+    }
+
+    if (tallies.size === 0) return empty;
+
+    let winner: string | null = null;
+    let winnerCount = 0;
+    for (const [method, count] of tallies) {
+      if (count > winnerCount) {
+        winner = method;
+        winnerCount = count;
+      }
+    }
+
+    if (!winner) return empty;
+
+    return {
+      method: winner,
+      label: formatPaymentMethodLabel(winner),
+      count: winnerCount,
+    };
+  } catch (error) {
+    console.error("getPreferredPaymentMethod:", error);
+    return empty;
+  }
+}
+
 /** Carrega todas as métricas do dashboard em paralelo. */
 export async function getDashboardData(): Promise<DashboardData> {
   const startOfToday = getBrasiliaStartOfDay();
   const startOfWeek = subtractDays(startOfToday, 7);
   const startOfMonth = subtractDays(startOfToday, 30);
 
-  const [periods, topProducts, categorySales, weeklyEvolution] =
-    await Promise.all([
-      getPeriodMetricsBatch(startOfToday, startOfWeek, startOfMonth),
-      getTopProducts(7),
-      getCategorySales(startOfMonth),
-      getWeeklyEvolution(startOfWeek),
-    ]);
+  const [
+    periods,
+    topProducts,
+    categorySales,
+    weeklyEvolution,
+    preferredPaymentMethod,
+  ] = await Promise.all([
+    getPeriodMetricsBatch(startOfToday, startOfWeek, startOfMonth),
+    getTopProducts(7),
+    getCategorySales(startOfMonth),
+    getWeeklyEvolution(startOfWeek),
+    getPreferredPaymentMethod(),
+  ]);
 
   return {
     today: periods.today,
@@ -267,5 +344,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     topProducts,
     categorySales,
     weeklyEvolution,
+    preferredPaymentMethod,
   };
 }

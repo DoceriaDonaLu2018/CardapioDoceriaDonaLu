@@ -50,6 +50,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         status: true,
         source: true,
         deliveryAddress: true,
+        paymentMethod: true,
         items: {
           select: {
             quantity: true,
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       status: order.status,
       source: order.source,
       deliveryAddress: order.deliveryAddress,
+      paymentMethod: order.paymentMethod,
       items: order.items.map((item) => ({
         quantity: item.quantity,
         priceAtTime: item.priceAtTime,

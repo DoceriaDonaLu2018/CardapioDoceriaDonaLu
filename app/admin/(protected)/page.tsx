@@ -2,6 +2,7 @@ import {
   CalendarDays,
   CalendarRange,
   CircleDollarSign,
+  CreditCard,
   TrendingUp,
 } from "lucide-react";
 
@@ -25,6 +26,13 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const data = await getDashboardData();
 
+  const preferredLabel =
+    data.preferredPaymentMethod.label ?? "Sem dados ainda";
+  const preferredHint =
+    data.preferredPaymentMethod.count > 0
+      ? `${data.preferredPaymentMethod.count} pedido${data.preferredPaymentMethod.count === 1 ? "" : "s"} com forma registrada`
+      : "Pedidos antigos sem forma de pagamento são ignorados";
+
   const kpiCards = [
     {
       label: "Faturamento do Dia",
@@ -45,6 +53,12 @@ export default async function DashboardPage() {
       icon: CalendarDays,
       highlight: true,
     },
+    {
+      label: "Método de Pagamento Preferido",
+      value: preferredLabel,
+      hint: preferredHint,
+      icon: CreditCard,
+    },
   ];
 
   return (
@@ -58,7 +72,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpiCards.map((card) => {
           const Icon = card.icon;
           return (

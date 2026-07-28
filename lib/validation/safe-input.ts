@@ -110,6 +110,14 @@ export const pdvOrderItemSchema = z.object({
   unitPrice: z.number().finite().min(0).max(1_000_000).optional(),
 });
 
+/** Formas de pagamento aceitas no PDV (valores persistidos em Order.paymentMethod). */
+export const pdvPaymentMethodSchema = z.enum(
+  ["cash", "credit_card", "debit_card", "pix"],
+  { message: "Selecione a forma de pagamento." }
+);
+
+export type PdvPaymentMethod = z.infer<typeof pdvPaymentMethodSchema>;
+
 export const pdvOrderSchema = z.object({
   orderId: z
     .string()
@@ -120,6 +128,7 @@ export const pdvOrderSchema = z.object({
   customerPhone: optionalPlainText(20),
   waiterName: optionalPlainText(80),
   advancePayment: z.number().finite().min(0).max(1_000_000).optional(),
+  paymentMethod: pdvPaymentMethodSchema,
   items: z.array(pdvOrderItemSchema).min(1).max(80),
 });
 

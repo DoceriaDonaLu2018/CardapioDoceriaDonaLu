@@ -36,6 +36,7 @@ export default async function NovoPedidoPage({
             customerPhone: true,
             waiterName: true,
             advancePayment: true,
+            paymentMethod: true,
             items: {
               select: {
                 productId: true,
@@ -74,6 +75,7 @@ export default async function NovoPedidoPage({
         customerPhone: order.customerPhone,
         waiterName: order.waiterName,
         advancePayment: order.advancePayment,
+        paymentMethod: order.paymentMethod,
         items: order.items.map((item) => ({
           productId: item.productId,
           title:

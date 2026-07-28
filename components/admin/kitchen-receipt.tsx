@@ -1,6 +1,9 @@
 import { formatDateTime, formatPhone, formatPrice } from "@/lib/format";
 import { formatOrderId } from "@/lib/order-period";
-import type { KitchenReceiptData } from "@/lib/receipt";
+import {
+  formatPaymentMethodLabel,
+  type KitchenReceiptData,
+} from "@/lib/receipt";
 
 interface KitchenReceiptProps {
   data: KitchenReceiptData;
@@ -18,6 +21,8 @@ export function KitchenReceipt({ data }: KitchenReceiptProps) {
   const createdAt = new Date(data.createdAt);
   const hasAdvance = (data.advancePayment ?? 0) > 0;
   const remaining = Math.max(0, data.totalAmount - (data.advancePayment ?? 0));
+  // Forma de pagamento — fallback seguro para pedidos sem o campo.
+  const paymentLabel = formatPaymentMethodLabel(data.paymentMethod);
 
   return (
     <div className="kitchen-receipt-content box-border w-[72mm] bg-white px-[2.5mm] py-2 font-mono text-[10px] leading-tight text-black">
@@ -87,6 +92,11 @@ export function KitchenReceipt({ data }: KitchenReceiptProps) {
           TOTAL: {formatPrice(data.totalAmount)}
         </p>
       )}
+
+      {/* Forma de pagamento — mesma tipografia da comanda (10px mono). */}
+      <p className="mt-1">
+        <span className="font-bold">Forma de Pagamento:</span> {paymentLabel}
+      </p>
 
       <div className="mt-2 border-t border-dashed border-black" />
     </div>

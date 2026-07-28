@@ -42,6 +42,7 @@ export default async function HistoricoPedidosPage({
           createdAt: true;
           totalAmount: true;
           advancePayment: true;
+          paymentMethod: true;
           items: {
             select: {
               quantity: true;
@@ -71,6 +72,7 @@ export default async function HistoricoPedidosPage({
         createdAt: true,
         totalAmount: true,
         advancePayment: true,
+        paymentMethod: true,
         items: {
           select: {
             quantity: true,
@@ -95,6 +97,7 @@ export default async function HistoricoPedidosPage({
     createdAt: order.createdAt.toISOString(),
     totalAmount: order.totalAmount,
     advancePayment: order.advancePayment,
+    paymentMethod: order.paymentMethod,
     items: order.items.map((item) => ({
       quantity: item.quantity,
       priceAtTime: item.priceAtTime,

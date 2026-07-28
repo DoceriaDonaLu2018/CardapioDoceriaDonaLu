@@ -26,6 +26,8 @@ export type CreateOrderInput = {
   customerPhone?: string;
   waiterName?: string;
   advancePayment?: number;
+  /** cash | credit_card | debit_card | pix — obrigatório no PDV. */
+  paymentMethod: "cash" | "credit_card" | "debit_card" | "pix";
   items: CreateOrderItemInput[];
 };
 
@@ -89,6 +91,7 @@ export async function createOrder(
   const name = parsed.data.customerName;
   const waiterName = parsed.data.waiterName;
   const customerPhone = normalizePhone(parsed.data.customerPhone);
+  const paymentMethod = parsed.data.paymentMethod;
 
   const mergedItems = mergeItems(parsed.data.items);
   if (mergedItems.length === 0) {
@@ -155,6 +158,7 @@ export async function createOrder(
         source: "PDV",
         totalAmount,
         advancePayment,
+        paymentMethod,
         items: { create: orderItems },
       },
     });
@@ -319,6 +323,7 @@ export async function updateOrder(
   const name = parsed.data.customerName;
   const waiterName = parsed.data.waiterName;
   const customerPhone = normalizePhone(parsed.data.customerPhone);
+  const paymentMethod = parsed.data.paymentMethod;
   const mergedItems = mergeItems(parsed.data.items);
   if (mergedItems.length === 0) {
     return { error: "Adicione pelo menos um item à comanda." };
@@ -395,6 +400,7 @@ export async function updateOrder(
           status: "PENDING",
           totalAmount,
           advancePayment,
+          paymentMethod,
           items: { create: orderItems },
         },
       }),

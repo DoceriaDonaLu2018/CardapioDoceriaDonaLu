@@ -12,6 +12,8 @@ export type KitchenReceiptData = {
   createdAt: string;
   totalAmount: number;
   advancePayment: number;
+  /** Valor bruto do banco (`paymentMethod`) — pode ser null em pedidos antigos/PDV. */
+  paymentMethod?: string | null;
   items: KitchenReceiptItem[];
 };
 
@@ -23,6 +25,7 @@ type OrderForReceipt = {
   createdAt: Date;
   totalAmount: number;
   advancePayment?: number | null;
+  paymentMethod?: string | null;
   items: {
     quantity: number;
     priceAtTime: number;
@@ -30,6 +33,74 @@ type OrderForReceipt = {
     product?: { title: string } | null;
   }[];
 };
+
+/**
+ * Normaliza valores brutos (PDV + Mercado Pago) para buckets de métrica/exibição.
+ * Retorna null para vazio — pedidos antigos sem forma de pagamento.
+ */
+export function canonicalizePaymentMethod(
+  method: string | null | undefined
+): "pix" | "cash" | "credit_card" | "debit_card" | "other" | null {
+  if (!method || !method.trim()) return null;
+
+  const key = method.trim().toLowerCase();
+
+  if (key === "pix") return "pix";
+  if (key === "cash" || key === "dinheiro") return "cash";
+  if (
+    key === "debit_card" ||
+    key === "debit" ||
+    key === "debvisa" ||
+    key === "debmaster" ||
+    key === "elo_debit"
+  ) {
+    return "debit_card";
+  }
+  if (
+    key === "card" ||
+    key === "credit_card" ||
+    key === "credit" ||
+    key === "visa" ||
+    key === "master" ||
+    key === "mastercard" ||
+    key === "amex" ||
+    key === "elo" ||
+    key === "hipercard"
+  ) {
+    return "credit_card";
+  }
+
+  return "other";
+}
+
+/**
+ * Traduz o valor técnico de `Order.paymentMethod` para texto da notinha.
+ * Pedidos sem método (PDV antigo / null) → "Não informado".
+ */
+export function formatPaymentMethodLabel(
+  method: string | null | undefined
+): string {
+  if (!method || !method.trim()) return "Não informado";
+
+  const key = method.trim().toLowerCase();
+  const canonical = canonicalizePaymentMethod(key);
+
+  switch (canonical) {
+    case "pix":
+      return "Pix";
+    case "cash":
+      return "Dinheiro";
+    case "credit_card":
+      return "Cartão de Crédito";
+    case "debit_card":
+      return "Cartão de Débito";
+    default:
+      if (key === "account_money") return "Saldo Mercado Pago";
+      if (key === "checkout_pro") return "Mercado Pago";
+      // Fallback legível: mantém o valor cru sem quebrar a impressão.
+      return method.trim();
+  }
+}
 
 export function toKitchenReceiptData(order: OrderForReceipt): KitchenReceiptData {
   return {
@@ -41,6 +112,7 @@ export function toKitchenReceiptData(order: OrderForReceipt): KitchenReceiptData
     totalAmount: order.totalAmount,
     // Pedidos antigos não possuem sinal: tratamos como 0.
     advancePayment: order.advancePayment ?? 0,
+    paymentMethod: order.paymentMethod ?? null,
     items: order.items.map(
       (item): KitchenReceiptItem => ({
         quantity: item.quantity,

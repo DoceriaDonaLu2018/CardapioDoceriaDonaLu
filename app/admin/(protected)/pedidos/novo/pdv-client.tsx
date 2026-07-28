@@ -20,6 +20,13 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 /** Converte o texto digitado no campo de sinal em número (aceita vírgula). */
 function parseCurrencyInput(value: string): number {
@@ -47,12 +54,31 @@ export type PdvCategory = {
   name: string;
 };
 
+const PDV_PAYMENT_OPTIONS = [
+  { value: "cash", label: "Dinheiro" },
+  { value: "credit_card", label: "Cartão de Crédito" },
+  { value: "debit_card", label: "Cartão de Débito" },
+  { value: "pix", label: "Pix" },
+] as const;
+
+type PdvPaymentMethodValue = (typeof PDV_PAYMENT_OPTIONS)[number]["value"];
+
+function isPdvPaymentMethod(value: string | null | undefined): value is PdvPaymentMethodValue {
+  return (
+    value === "cash" ||
+    value === "credit_card" ||
+    value === "debit_card" ||
+    value === "pix"
+  );
+}
+
 export type PdvInitialOrder = {
   id: string;
   customerName: string;
   customerPhone: string | null;
   waiterName: string | null;
   advancePayment: number;
+  paymentMethod: string | null;
   items: {
     productId: string;
     title: string;
@@ -95,6 +121,11 @@ export function PdvClient({
   );
   const [advanceInput, setAdvanceInput] = useState(
     formatAdvanceInput(initialOrder?.advancePayment ?? 0)
+  );
+  const [paymentMethod, setPaymentMethod] = useState<PdvPaymentMethodValue | "">(
+    isPdvPaymentMethod(initialOrder?.paymentMethod)
+      ? initialOrder.paymentMethod
+      : ""
   );
   const [showExtraInfo, setShowExtraInfo] = useState(
     Boolean(
@@ -192,6 +223,11 @@ export function PdvClient({
     setError(null);
     setSuccessMessage(null);
 
+    if (!paymentMethod) {
+      setError("Selecione a forma de pagamento.");
+      return;
+    }
+
     if (advanceExceedsTotal) {
       setError("O sinal não pode ser maior que o total do pedido.");
       return;
@@ -203,6 +239,7 @@ export function PdvClient({
         customerPhone: customerPhone || undefined,
         waiterName: waiterName || undefined,
         advancePayment,
+        paymentMethod,
         items: cart.map((line) => ({
           productId: line.productId,
           quantity: line.quantity,
@@ -229,6 +266,7 @@ export function PdvClient({
       setWaiterName("");
       setCustomerPhone("");
       setAdvanceInput("");
+      setPaymentMethod("");
       setShowExtraInfo(false);
       setEditingOrderId(null);
     });
@@ -361,6 +399,28 @@ export function PdvClient({
               onChange={(event) => setWaiterName(event.target.value)}
               disabled={isPending}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="paymentMethod">Forma de pagamento</Label>
+            <Select
+              value={paymentMethod || undefined}
+              onValueChange={(value) => {
+                if (isPdvPaymentMethod(value)) setPaymentMethod(value);
+              }}
+              disabled={isPending}
+            >
+              <SelectTrigger id="paymentMethod" className="bg-white">
+                <SelectValue placeholder="Selecione..." />
+              </SelectTrigger>
+              <SelectContent>
+                {PDV_PAYMENT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Seção expansível para encomendas (WhatsApp + sinal). */}
@@ -539,6 +599,7 @@ export function PdvClient({
               isPending ||
               cart.length === 0 ||
               !customerName.trim() ||
+              !paymentMethod ||
               advanceExceedsTotal
             }
             className={cn(
