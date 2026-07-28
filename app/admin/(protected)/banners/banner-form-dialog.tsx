@@ -94,7 +94,8 @@ export function BannerFormDialog({
             <Label>Imagem do banner</Label>
             <ImageUpload name="imageUrl" defaultValue={banner?.imageUrl} />
             <p className="text-xs text-stone-500">
-              Preferível landscape (ex.: 1200×500). Máx. 4 MB.
+              Tamanho ideal: <strong>1500×500</strong> px (proporção 3:1). Máx. 4
+              MB.
             </p>
           </div>
 

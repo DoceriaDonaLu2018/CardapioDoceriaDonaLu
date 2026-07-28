@@ -16,8 +16,8 @@ export type HomeBannerSlide = {
 };
 
 /**
- * Banner promocional compacto (padrão delivery/e-commerce).
- * Altura limitada no mobile (~144px) e no desktop (máx. ~224px).
+ * Banner promocional — proporção 1500×500 (3:1), padrão delivery/e-commerce.
+ * A altura escala com a largura do container (sem esticar demais no mobile).
  */
 export function HomeBannerCarousel({ banners }: { banners: HomeBannerSlide[] }) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -56,9 +56,9 @@ export function HomeBannerCarousel({ banners }: { banners: HomeBannerSlide[] }) 
       aria-label="Promoções"
     >
       <div className="relative overflow-hidden rounded-xl bg-stone-200 shadow-sm">
-        {/* Altura reservada evita layout shift enquanto a imagem carrega */}
+        {/* 1500×500 → aspect-ratio 3/1 — reserva espaço e evita layout shift */}
         <div
-          className="relative h-36 w-full overflow-hidden sm:h-44 md:h-52 lg:h-56"
+          className="relative aspect-[3/1] w-full overflow-hidden"
           ref={emblaRef}
         >
           <div className="flex h-full">
@@ -70,7 +70,7 @@ export function HomeBannerCarousel({ banners }: { banners: HomeBannerSlide[] }) 
                     alt="Promoção Doceria Dona Lu"
                     fill
                     priority={index === 0}
-                    sizes="(max-width: 768px) 100vw, 1200px"
+                    sizes="(max-width: 768px) 100vw, 1500px"
                     className="h-full w-full object-cover object-center"
                   />
                 </div>
