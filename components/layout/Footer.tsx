@@ -1,11 +1,15 @@
 import { CakeSlice, Clock, Instagram, MessageCircle } from "lucide-react";
 
 import {
-  STORE_HOURS_LABEL,
+  STORE_ADDRESS,
   STORE_INSTAGRAM_URL,
   STORE_NAME,
   STORE_WHATSAPP_URL,
 } from "@/lib/store-info";
+import {
+  formatStoreHoursLabel,
+  getStoreSettings,
+} from "@/lib/store-settings";
 
 const socials = [
   {
@@ -20,7 +24,13 @@ const socials = [
   },
 ];
 
-export function Footer() {
+export async function Footer() {
+  const settings = await getStoreSettings();
+  const hoursLabel = formatStoreHoursLabel(
+    settings.openTime,
+    settings.closeTime
+  );
+
   return (
     <footer className="mt-16 border-t border-stone-200 bg-white">
       <div className="container flex flex-col items-center gap-6 py-10 text-center">
@@ -34,6 +44,8 @@ export function Footer() {
         <p className="text-sm text-stone-500">
           Doces artesanais feitos com carinho em cada detalhe.
         </p>
+
+        <p className="max-w-md text-sm text-stone-500">{STORE_ADDRESS}</p>
 
         <div className="flex items-center gap-4">
           {socials.map(({ label, href, Icon }) => (
@@ -52,7 +64,7 @@ export function Footer() {
 
         <p className="flex items-center gap-2 text-sm text-stone-600">
           <Clock className="h-4 w-4 shrink-0 text-coffee-600" aria-hidden />
-          <span>{STORE_HOURS_LABEL}</span>
+          <span>{hoursLabel}</span>
         </p>
 
         <p className="text-xs text-stone-400">

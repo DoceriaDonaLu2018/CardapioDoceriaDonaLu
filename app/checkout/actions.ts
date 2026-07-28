@@ -15,6 +15,7 @@ import {
   mapMercadoPagoError,
 } from "@/lib/payments/mercadopago";
 import { assertMemoryRateLimit } from "@/lib/payments/rate-limit";
+import { getSelectablePickupSlots } from "@/lib/store-settings";
 import { stripHtml } from "@/lib/validation/safe-input";
 
 const checkoutItemSchema = z.object({
@@ -26,32 +27,51 @@ const checkoutItemSchema = z.object({
   quantity: z.number().int().min(1).max(50),
 });
 
-const checkoutSchema = z.object({
-  // stripHtml: bloqueia payloads tipo <script> em campos de texto.
-  customerName: z
-    .string()
-    .transform(stripHtml)
-    .pipe(z.string().min(2, "Informe seu nome.").max(120)),
-  customerPhone: z
-    .string()
-    .trim()
-    .min(10, "Informe um WhatsApp válido.")
-    .max(20),
-  customerEmail: z
-    .string()
-    .trim()
-    .min(5, "Informe um e-mail válido.")
-    .max(160)
-    .refine(
-      (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
-      "Informe um e-mail válido."
-    ),
-  deliveryNotes: z
-    .string()
-    .optional()
-    .transform((v) => (v == null ? undefined : stripHtml(v).slice(0, 400))),
-  items: z.array(checkoutItemSchema).min(1).max(40),
-});
+const checkoutSchema = z
+  .object({
+    customerName: z
+      .string()
+      .transform(stripHtml)
+      .pipe(z.string().min(2, "Informe seu nome.").max(120)),
+    customerPhone: z
+      .string()
+      .trim()
+      .min(10, "Informe um WhatsApp válido.")
+      .max(20),
+    customerEmail: z
+      .string()
+      .trim()
+      .min(5, "Informe um e-mail válido.")
+      .max(160)
+      .refine(
+        (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+        "Informe um e-mail válido."
+      ),
+    deliveryNotes: z
+      .string()
+      .optional()
+      .transform((v) => (v == null ? undefined : stripHtml(v).slice(0, 400))),
+    /** pickup = retirada hoje | scheduled = encomenda com data */
+    fulfillmentMode: z.enum(["pickup", "scheduled"]).default("pickup"),
+    pickupTime: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Selecione um horário válido."),
+    deliveryDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe a data da encomenda.")
+      .optional()
+      .nullable(),
+    items: z.array(checkoutItemSchema).min(1).max(40),
+  })
+  .superRefine((data, ctx) => {
+    if (data.fulfillmentMode === "scheduled" && !data.deliveryDate) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Informe a data da encomenda.",
+        path: ["deliveryDate"],
+      });
+    }
+  });
 
 const orderAuthSchema = z.object({
   orderId: z
@@ -142,6 +162,31 @@ export async function createOnlineOrder(
     return { success: false, error: "Informe um WhatsApp válido." };
   }
 
+  const allowedSlots = await getSelectablePickupSlots();
+  if (allowedSlots.length === 0) {
+    return {
+      success: false,
+      error:
+        "Nenhum horário de retirada disponível no momento. Tente mais tarde.",
+    };
+  }
+  if (!allowedSlots.includes(input.pickupTime)) {
+    return {
+      success: false,
+      error: "Horário de retirada inválido. Escolha um dos horários disponíveis.",
+    };
+  }
+
+  const isScheduled = input.fulfillmentMode === "scheduled";
+  const deliveryDate = isScheduled ? input.deliveryDate ?? null : null;
+  if (isScheduled && deliveryDate) {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    if (deliveryDate < todayStr) {
+      return { success: false, error: "A data da encomenda não pode ser no passado." };
+    }
+  }
+
   const rateError = await assertRateLimits(phone);
   if (rateError) return rateError;
 
@@ -223,6 +268,8 @@ export async function createOnlineOrder(
       customerEmail: input.customerEmail.trim().toLowerCase(),
       deliveryAddress: PICKUP_FULFILLMENT_LABEL,
       deliveryNotes: input.deliveryNotes?.trim() || null,
+      pickupTime: input.pickupTime,
+      deliveryDate,
       status: OrderStatus.AWAITING_PAYMENT,
       source: OrderSource.ONLINE,
       totalAmount,

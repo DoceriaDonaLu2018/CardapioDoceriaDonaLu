@@ -110,6 +110,9 @@ model Order {
   advancePayment     Float       @default(0) // sinal pago antecipadamente (PDV)
   deliveryAddress    String?
   deliveryNotes      String?
+  // Retirada / encomenda (checkout online)
+  pickupTime         String? // HH:mm — horário escolhido pelo cliente
+  deliveryDate       String? // YYYY-MM-DD — preenchido só em encomenda
   // Mercado Pago Checkout Pro
   paymentId          String?     @unique // ID do pagamento aprovado no gateway
   paymentProvider    String? // mercadopago
@@ -124,6 +127,19 @@ model Order {
   @@index([status])
   @@index([source])
   @@map("orders")
+}
+
+/// Configurações singleton da loja (horários e slots de retirada).
+model StoreSettings {
+  id           String   @id @default("default")
+  openTime     String   @default("12:00") // HH:mm
+  closeTime    String   @default("18:00") // HH:mm
+  /// Slots selecionáveis no checkout, ex.: ["13:00","14:00","15:00"]
+  pickupSlots  String[] @default([])
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@map("store_settings")
 }
 
 /// Idempotência de webhooks: cada evento do gateway é processado no máximo uma vez.

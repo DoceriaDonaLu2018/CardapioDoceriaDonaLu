@@ -24,6 +24,9 @@ export type HistoricoOrderRow = {
   createdAt: string;
   totalAmount: number;
   advancePayment?: number | null;
+  paymentMethod?: string | null;
+  pickupTime?: string | null;
+  deliveryDate?: string | null;
   items: {
     quantity: number;
     priceAtTime: number;

@@ -1,6 +1,11 @@
 import Link from "next/link";
 
 import { CartProvider } from "@/components/cart/cart-context";
+import {
+  formatStoreHoursLabel,
+  getSelectablePickupSlots,
+  getStoreSettings,
+} from "@/lib/store-settings";
 import { CheckoutForm } from "./checkout-form";
 import { Button } from "@/components/ui/button";
 
@@ -9,7 +14,14 @@ export const metadata = {
   description: "Finalize seu pedido e pague no Mercado Pago.",
 };
 
-export default function CheckoutPage() {
+export const dynamic = "force-dynamic";
+
+export default async function CheckoutPage() {
+  const [slots, settings] = await Promise.all([
+    getSelectablePickupSlots(),
+    getStoreSettings(),
+  ]);
+
   return (
     <CartProvider>
       <div className="min-h-screen bg-stone-50">
@@ -36,7 +48,13 @@ export default function CheckoutPage() {
               PIX, crédito ou débito · retirada no local. Sem login, sem SMS.
             </p>
           </div>
-          <CheckoutForm />
+          <CheckoutForm
+            pickupSlots={slots}
+            hoursLabel={formatStoreHoursLabel(
+              settings.openTime,
+              settings.closeTime
+            )}
+          />
         </main>
       </div>
     </CartProvider>

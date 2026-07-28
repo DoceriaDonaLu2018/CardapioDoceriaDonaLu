@@ -14,6 +14,8 @@ export type PendingOrder = {
   source?: string;
   deliveryAddress?: string | null;
   paymentMethod?: string | null;
+  pickupTime?: string | null;
+  deliveryDate?: string | null;
   items: {
     quantity: number;
     priceAtTime: number;

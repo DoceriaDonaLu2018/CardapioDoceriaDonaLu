@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
 import { idSchema, productWriteSchema } from "@/lib/validation/safe-input";
+import { z } from "zod";
 
 export type ProductActionState = {
   error?: string;
@@ -137,18 +138,77 @@ export async function toggleProductAvailability(
   id: string,
   isAvailable: boolean
 ): Promise<ProductActionState> {
-  await requireAdmin();
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "Sessão expirada. Faça login novamente." };
+  }
 
   const parsedId = idSchema.safeParse(id);
   if (!parsedId.success) return { error: "Produto inválido." };
 
   try {
-    await prisma.product.update({
-      where: { id: parsedId.data },
+    const result = await prisma.product.updateMany({
+      where: { id: parsedId.data, isDeleted: false },
+      data: { isAvailable: Boolean(isAvailable) },
+    });
+    if (result.count === 0) return { error: "Produto não encontrado." };
+  } catch {
+    return { error: "Não foi possível atualizar a disponibilidade." };
+  }
+
+  revalidateAll();
+  return { success: true };
+}
+
+const idsSchema = z.array(idSchema).min(1).max(200);
+
+export async function bulkSetAvailability(
+  ids: string[],
+  isAvailable: boolean
+): Promise<ProductActionState> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "Sessão expirada. Faça login novamente." };
+  }
+
+  const parsed = idsSchema.safeParse(ids);
+  if (!parsed.success) return { error: "Seleção inválida." };
+
+  try {
+    await prisma.product.updateMany({
+      where: { id: { in: parsed.data }, isDeleted: false },
       data: { isAvailable: Boolean(isAvailable) },
     });
   } catch {
-    return { error: "Não foi possível atualizar a disponibilidade." };
+    return { error: "Não foi possível atualizar os produtos selecionados." };
+  }
+
+  revalidateAll();
+  return { success: true };
+}
+
+/** Soft delete em lote — preserva histórico de pedidos (OrderItem Restrict). */
+export async function bulkSoftDeleteProducts(
+  ids: string[]
+): Promise<ProductActionState> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "Sessão expirada. Faça login novamente." };
+  }
+
+  const parsed = idsSchema.safeParse(ids);
+  if (!parsed.success) return { error: "Seleção inválida." };
+
+  try {
+    await prisma.product.updateMany({
+      where: { id: { in: parsed.data }, isDeleted: false },
+      data: { isDeleted: true, isAvailable: false },
+    });
+  } catch {
+    return { error: "Não foi possível excluir os produtos selecionados." };
   }
 
   revalidateAll();

@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   Package,
+  Settings,
   ShoppingCart,
   Star,
   Tags,
@@ -32,6 +33,7 @@ const links = [
   { href: "/admin/estoque", label: "Estoque", icon: Package },
   { href: "/admin/ficha-tecnica", label: "Ficha Técnica", icon: Calculator },
   { href: "/admin/avaliacoes", label: "Avaliações", icon: Star },
+  { href: "/admin/configuracoes", label: "Configurações", icon: Settings },
   { href: "/admin/pedidos/novo", label: "Novo Pedido", icon: ShoppingCart },
   {
     href: "/admin/pedidos",

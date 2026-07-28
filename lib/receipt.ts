@@ -14,6 +14,10 @@ export type KitchenReceiptData = {
   advancePayment: number;
   /** Valor bruto do banco (`paymentMethod`) — pode ser null em pedidos antigos/PDV. */
   paymentMethod?: string | null;
+  /** HH:mm — horário de retirada/entrega escolhido no checkout. */
+  pickupTime?: string | null;
+  /** YYYY-MM-DD — preenchido em encomenda. */
+  deliveryDate?: string | null;
   items: KitchenReceiptItem[];
 };
 
@@ -26,6 +30,8 @@ type OrderForReceipt = {
   totalAmount: number;
   advancePayment?: number | null;
   paymentMethod?: string | null;
+  pickupTime?: string | null;
+  deliveryDate?: string | null;
   items: {
     quantity: number;
     priceAtTime: number;
@@ -97,9 +103,14 @@ export function formatPaymentMethodLabel(
     default:
       if (key === "account_money") return "Saldo Mercado Pago";
       if (key === "checkout_pro") return "Mercado Pago";
-      // Fallback legível: mantém o valor cru sem quebrar a impressão.
       return method.trim();
   }
+}
+
+function formatDeliveryDateBr(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-");
+  if (!y || !m || !d) return isoDate;
+  return `${d}/${m}/${y}`;
 }
 
 export function toKitchenReceiptData(order: OrderForReceipt): KitchenReceiptData {
@@ -110,13 +121,13 @@ export function toKitchenReceiptData(order: OrderForReceipt): KitchenReceiptData
     waiterName: order.waiterName ?? null,
     createdAt: order.createdAt.toISOString(),
     totalAmount: order.totalAmount,
-    // Pedidos antigos não possuem sinal: tratamos como 0.
     advancePayment: order.advancePayment ?? 0,
     paymentMethod: order.paymentMethod ?? null,
+    pickupTime: order.pickupTime ?? null,
+    deliveryDate: order.deliveryDate ?? null,
     items: order.items.map(
       (item): KitchenReceiptItem => ({
         quantity: item.quantity,
-        // Preferir snapshot; fallback para relação (pedidos antigos / soft delete).
         title:
           (item.productTitle && item.productTitle.trim()) ||
           item.product?.title ||
@@ -126,3 +137,5 @@ export function toKitchenReceiptData(order: OrderForReceipt): KitchenReceiptData
     ),
   };
 }
+
+export { formatDeliveryDateBr };

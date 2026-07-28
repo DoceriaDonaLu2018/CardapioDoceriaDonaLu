@@ -55,6 +55,16 @@ export function KitchenReceipt({ data }: KitchenReceiptProps) {
       <p>
         <span className="font-bold">Data:</span> {formatDateTime(createdAt)}
       </p>
+      {data.deliveryDate && data.pickupTime ? (
+        <p className="mt-1 text-[11px] font-bold uppercase">
+          Data e Horário da Entrega:{" "}
+          {data.deliveryDate.split("-").reverse().join("/")} às {data.pickupTime}
+        </p>
+      ) : data.pickupTime ? (
+        <p className="mt-1 text-[11px] font-bold uppercase">
+          Horário da Retirada: {data.pickupTime}
+        </p>
+      ) : null}
 
       <div className="my-2 border-t border-dashed border-black" />
 
