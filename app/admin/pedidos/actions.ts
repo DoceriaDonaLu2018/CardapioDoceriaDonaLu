@@ -6,6 +6,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
 import { KITCHEN_VISIBLE_STATUSES } from "@/lib/orders/constants";
+import {
+  decrementStockOrThrow,
+  incrementStock,
+  InsufficientStockError,
+} from "@/lib/inventory/stock";
 import { idSchema, pdvOrderSchema } from "@/lib/validation/safe-input";
 
 export type OrderActionState = {
@@ -68,7 +73,9 @@ function mergeItems(items: CreateOrderItemInput[]): CreateOrderItemInput[] {
 function revalidateOrders() {
   revalidatePath("/admin/pedidos");
   revalidatePath("/admin/pedidos/historico");
+  revalidatePath("/admin/estoque");
   revalidatePath("/admin");
+  revalidatePath("/");
 }
 
 export async function createOrder(
@@ -149,18 +156,24 @@ export async function createOrder(
   }
 
   try {
-    const order = await prisma.order.create({
-      data: {
-        customerName: name,
-        customerPhone,
-        waiterName,
-        status: "PENDING",
-        source: "PDV",
-        totalAmount,
-        advancePayment,
-        paymentMethod,
-        items: { create: orderItems },
-      },
+    const order = await prisma.$transaction(async (tx) => {
+      for (const item of orderItems) {
+        await decrementStockOrThrow(tx, item.productId, item.quantity);
+      }
+
+      return tx.order.create({
+        data: {
+          customerName: name,
+          customerPhone,
+          waiterName,
+          status: "PENDING",
+          source: "PDV",
+          totalAmount,
+          advancePayment,
+          paymentMethod,
+          items: { create: orderItems },
+        },
+      });
     });
 
     revalidateOrders();
@@ -168,6 +181,10 @@ export async function createOrder(
     return { success: true, orderId: order.id };
   } catch (error) {
     console.error("createOrder:", error);
+
+    if (error instanceof InsufficientStockError) {
+      return { error: "Estoque insuficiente para um ou mais itens." };
+    }
 
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -235,16 +252,30 @@ export async function cancelOrder(orderId: string): Promise<OrderActionState> {
   try {
     const existing = await prisma.order.findUnique({
       where: { id: parsedId.data },
-      select: { status: true },
+      select: {
+        status: true,
+        items: { select: { productId: true, quantity: true } },
+      },
     });
     if (!existing) return { error: "Pedido não encontrado." };
     if (existing.status === "COMPLETED") {
       return { error: "Pedidos concluídos não podem ser cancelados por aqui." };
     }
 
-    await prisma.order.update({
-      where: { id: parsedId.data },
-      data: { status: "CANCELED" },
+    // Estoque só foi baixado em PENDING (PDV) ou PAID (online).
+    const shouldRestore =
+      existing.status === "PENDING" || existing.status === "PAID";
+
+    await prisma.$transaction(async (tx) => {
+      if (shouldRestore) {
+        for (const item of existing.items) {
+          await incrementStock(tx, item.productId, item.quantity);
+        }
+      }
+      await tx.order.update({
+        where: { id: parsedId.data },
+        data: { status: "CANCELED" },
+      });
     });
 
     revalidateOrders();
@@ -274,7 +305,10 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
   try {
     const existing = await prisma.order.findUnique({
       where: { id: parsedId.data },
-      select: { status: true },
+      select: {
+        status: true,
+        items: { select: { productId: true, quantity: true } },
+      },
     });
     if (!existing) return { error: "Pedido não encontrado." };
     if (existing.status === "COMPLETED") {
@@ -286,16 +320,41 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
           "Pedidos aguardando pagamento online não podem ser reabertos no PDV. Cancele ou aguarde a confirmação.",
       };
     }
+    if (existing.status === "PAID") {
+      return {
+        error:
+          "Pedidos pagos online não podem ser reabertos no PDV. Cancele se necessário.",
+      };
+    }
 
-    await prisma.order.update({
-      where: { id: parsedId.data },
-      data: { status: "PENDING" },
-    });
+    // CANCELED: estoque já foi devolvido no cancel — re-baixa ao reabrir.
+    if (existing.status === "CANCELED") {
+      await prisma.$transaction(async (tx) => {
+        for (const item of existing.items) {
+          await decrementStockOrThrow(tx, item.productId, item.quantity);
+        }
+        await tx.order.update({
+          where: { id: parsedId.data },
+          data: { status: "PENDING" },
+        });
+      });
+    } else {
+      await prisma.order.update({
+        where: { id: parsedId.data },
+        data: { status: "PENDING" },
+      });
+    }
 
     revalidateOrders();
     return { success: true, orderId: parsedId.data };
   } catch (error) {
     console.error("reopenOrder:", error);
+    if (error instanceof InsufficientStockError) {
+      return {
+        error:
+          "Não foi possível reabrir: estoque insuficiente para os itens do pedido.",
+      };
+    }
     return { error: "Não foi possível reabrir o pedido." };
   }
 }
@@ -382,16 +441,27 @@ export async function updateOrder(
   try {
     const existing = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { status: true },
+      select: {
+        status: true,
+        items: { select: { productId: true, quantity: true } },
+      },
     });
     if (!existing) return { error: "Pedido não encontrado." };
     if (existing.status === "COMPLETED") {
       return { error: "Pedidos concluídos não podem ser editados." };
     }
 
-    await prisma.$transaction([
-      prisma.orderItem.deleteMany({ where: { orderId } }),
-      prisma.order.update({
+    await prisma.$transaction(async (tx) => {
+      // Devolve estoque dos itens antigos e baixa os novos (delta seguro).
+      for (const item of existing.items) {
+        await incrementStock(tx, item.productId, item.quantity);
+      }
+      for (const item of orderItems) {
+        await decrementStockOrThrow(tx, item.productId, item.quantity);
+      }
+
+      await tx.orderItem.deleteMany({ where: { orderId } });
+      await tx.order.update({
         where: { id: orderId },
         data: {
           customerName: name,
@@ -403,13 +473,16 @@ export async function updateOrder(
           paymentMethod,
           items: { create: orderItems },
         },
-      }),
-    ]);
+      });
+    });
 
     revalidateOrders();
     return { success: true, orderId };
   } catch (error) {
     console.error("updateOrder:", error);
+    if (error instanceof InsufficientStockError) {
+      return { error: "Estoque insuficiente para um ou mais itens." };
+    }
     return { error: "Não foi possível atualizar o pedido." };
   }
 }

@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { OrderStatus } from "@/lib/orders/constants";
+import {
+  decrementStockOrThrow,
+  InsufficientStockError,
+} from "@/lib/inventory/stock";
 import { fetchMercadoPagoPayment } from "@/lib/payments/mercadopago";
 
 function amountsMatch(a: number, b: number): boolean {
@@ -12,11 +16,13 @@ export type ApplyPaymentResult =
   | { outcome: "pending"; orderId: string | null; paymentId: string; status: string }
   | { outcome: "rejected"; orderId: string | null; paymentId: string; status: string }
   | { outcome: "unmatched"; paymentId: string; reason: string }
-  | { outcome: "amount_mismatch"; orderId: string; paymentId: string };
+  | { outcome: "amount_mismatch"; orderId: string; paymentId: string }
+  | { outcome: "stock_failed"; orderId: string; paymentId: string };
 
 /**
  * Fonte da verdade: GET /v1/payments/{id} → promove AWAITING_PAYMENT → PAID.
  * Idempotente: seguro chamar várias vezes com o mesmo paymentId.
+ * Baixa de estoque atômica na mesma transaction (evita race / oversell).
  */
 export async function applyMercadoPagoPaymentId(
   paymentId: string
@@ -85,7 +91,7 @@ export async function applyMercadoPagoPaymentId(
     order.status === OrderStatus.PAID ||
     order.status === OrderStatus.COMPLETED
   ) {
-    // Já pago — garante paymentId se ainda não tinha.
+    // Já pago — garante paymentId se ainda não tinha. Estoque já foi baixado.
     if (!order.paymentId) {
       await prisma.order.update({
         where: { id: order.id },
@@ -111,40 +117,72 @@ export async function applyMercadoPagoPaymentId(
     };
   }
 
-  // Unique em paymentId: se outro pedido já usa este id, falha com P2002.
-  const updated = await prisma.order.updateMany({
-    where: {
-      id: order.id,
-      status: OrderStatus.AWAITING_PAYMENT,
-    },
-    data: {
-      status: OrderStatus.PAID,
-      paymentId: payment.id,
-      paymentMethod: payment.paymentMethodId ?? "checkout_pro",
-      paidAt: new Date(),
-    },
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Unique em paymentId: se outro pedido já usa este id, falha com P2002.
+      const updated = await tx.order.updateMany({
+        where: {
+          id: order.id,
+          status: OrderStatus.AWAITING_PAYMENT,
+        },
+        data: {
+          status: OrderStatus.PAID,
+          paymentId: payment.id,
+          paymentMethod: payment.paymentMethodId ?? "checkout_pro",
+          paidAt: new Date(),
+        },
+      });
 
-  if (updated.count === 0) {
-    const refreshed = await prisma.order.findUnique({
-      where: { id: order.id },
-      select: { status: true },
+      if (updated.count === 0) {
+        throw new Error("ORDER_NOT_UPDATED");
+      }
+
+      const items = await tx.orderItem.findMany({
+        where: { orderId: order.id },
+        select: { productId: true, quantity: true },
+      });
+
+      for (const item of items) {
+        await decrementStockOrThrow(tx, item.productId, item.quantity);
+      }
     });
-    if (
-      refreshed?.status === OrderStatus.PAID ||
-      refreshed?.status === OrderStatus.COMPLETED
-    ) {
+  } catch (error) {
+    if (error instanceof InsufficientStockError) {
+      console.error("applyMercadoPagoPaymentId stock_failed", {
+        orderId: order.id,
+        paymentId: payment.id,
+        productId: error.productId,
+      });
       return {
-        outcome: "already_paid",
+        outcome: "stock_failed",
         orderId: order.id,
         paymentId: payment.id,
       };
     }
-    return {
-      outcome: "unmatched",
-      paymentId: payment.id,
-      reason: "updateMany não alterou linhas",
-    };
+
+    if (error instanceof Error && error.message === "ORDER_NOT_UPDATED") {
+      const refreshed = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: { status: true },
+      });
+      if (
+        refreshed?.status === OrderStatus.PAID ||
+        refreshed?.status === OrderStatus.COMPLETED
+      ) {
+        return {
+          outcome: "already_paid",
+          orderId: order.id,
+          paymentId: payment.id,
+        };
+      }
+      return {
+        outcome: "unmatched",
+        paymentId: payment.id,
+        reason: "updateMany não alterou linhas",
+      };
+    }
+
+    throw error;
   }
 
   return {

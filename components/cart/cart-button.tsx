@@ -2,10 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { MapPin, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 
 import { useCart } from "@/components/cart/cart-context";
 import { formatPrice } from "@/lib/format";
+import { STORE_ADDRESS } from "@/lib/store-info";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -47,6 +48,21 @@ export function CartButton() {
             Revise os itens e pague no Mercado Pago — sem criar conta.
           </SheetDescription>
         </SheetHeader>
+
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5">
+          <MapPin
+            className="mt-0.5 h-4 w-4 shrink-0 text-coffee-600"
+            aria-hidden
+          />
+          <div>
+            <p className="text-xs font-medium text-stone-700">
+              Retirada no local
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
+              {STORE_ADDRESS}
+            </p>
+          </div>
+        </div>
 
         <div className="mt-4 flex-1 space-y-4 overflow-y-auto pr-1">
           {items.length === 0 ? (

@@ -9,6 +9,7 @@ import { Loader2, Lock, MapPin } from "lucide-react";
 import { createOnlineOrder } from "@/app/checkout/actions";
 import { useCart } from "@/components/cart/cart-context";
 import { formatPhone, formatPrice } from "@/lib/format";
+import { STORE_ADDRESS } from "@/lib/store-info";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -91,7 +92,10 @@ export function CheckoutForm() {
             <p className="text-sm font-semibold text-coffee-800">
               Retirada no local
             </p>
-            <p className="mt-0.5 text-sm text-coffee-700/80">
+            <p className="mt-0.5 text-sm font-medium text-coffee-800/90">
+              {STORE_ADDRESS}
+            </p>
+            <p className="mt-1 text-sm text-coffee-700/80">
               No momento não realizamos entregas. Após o pagamento, retire seu
               pedido na doceria.
             </p>

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { prisma } from "@/lib/prisma";
 import { CatalogShell } from "@/components/catalog/catalog-shell";
 import { ProductCard } from "@/components/ProductCard";
@@ -21,6 +23,7 @@ export default async function Home() {
           description: true,
           imageUrl: true,
           price: true,
+          stockQuantity: true,
         },
       },
     },
@@ -49,6 +52,12 @@ export default async function Home() {
             Doces preparados com carinho. Monte seu pedido, pague no Mercado
             Pago e acompanhe a confirmação automaticamente.
           </p>
+          <Link
+            href="/avaliacoes"
+            className="text-sm font-medium text-coffee-700 hover:underline"
+          >
+            Ver avaliações de clientes
+          </Link>
         </div>
       </section>
 

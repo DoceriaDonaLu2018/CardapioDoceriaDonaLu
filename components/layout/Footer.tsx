@@ -1,14 +1,21 @@
-import { CakeSlice, Instagram, MessageCircle } from "lucide-react";
+import { CakeSlice, Clock, Instagram, MessageCircle } from "lucide-react";
+
+import {
+  STORE_HOURS_LABEL,
+  STORE_INSTAGRAM_URL,
+  STORE_NAME,
+  STORE_WHATSAPP_URL,
+} from "@/lib/store-info";
 
 const socials = [
   {
     label: "Instagram",
-    href: "https://www.instagram.com/doceriadonaluoficial/",
+    href: STORE_INSTAGRAM_URL,
     Icon: Instagram,
   },
   {
     label: "WhatsApp",
-    href: "https://api.whatsapp.com/send/?phone=5511964862693&text&type=phone_number&app_absent=0&utm_source=ig",
+    href: STORE_WHATSAPP_URL,
     Icon: MessageCircle,
   },
 ];
@@ -20,7 +27,7 @@ export function Footer() {
         <div className="flex items-center gap-2">
           <CakeSlice className="h-6 w-6 text-coffee-600" />
           <span className="font-serif text-lg font-semibold text-stone-800">
-            Doceria Dona Lu
+            {STORE_NAME}
           </span>
         </div>
 
@@ -43,8 +50,13 @@ export function Footer() {
           ))}
         </div>
 
+        <p className="flex items-center gap-2 text-sm text-stone-600">
+          <Clock className="h-4 w-4 shrink-0 text-coffee-600" aria-hidden />
+          <span>{STORE_HOURS_LABEL}</span>
+        </p>
+
         <p className="text-xs text-stone-400">
-          © {new Date().getFullYear()} Doceria Dona Lu. Todos os direitos
+          © {new Date().getFullYear()} {STORE_NAME}. Todos os direitos
           reservados.
         </p>
       </div>

@@ -22,6 +22,7 @@ export interface ProductCardData {
   description: string;
   imageUrl: string;
   price: number;
+  stockQuantity: number;
 }
 
 interface ProductCardProps {
@@ -35,9 +36,11 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const titleId = useId();
   const dialogId = useId();
   const { addItem } = useCart();
+  const soldOut = product.stockQuantity <= 0;
 
   function handleAdd(event?: React.MouseEvent) {
     event?.stopPropagation();
+    if (soldOut) return;
     addItem({
       productId: product.id,
       title: product.title,
@@ -56,6 +59,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
           "hover:-translate-y-0.5 hover:border-coffee-200 hover:shadow-md",
           "focus-visible:ring-2 focus-visible:ring-coffee-500 focus-visible:ring-offset-2",
           "active:scale-[0.98]",
+          soldOut && "opacity-90",
           className
         )}
         role="button"
@@ -78,8 +82,16 @@ export function ProductCard({ product, className }: ProductCardProps) {
             alt={product.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+            className={cn(
+              "object-cover transition-transform duration-500 ease-out group-hover:scale-105",
+              soldOut && "grayscale-[40%]"
+            )}
           />
+          {soldOut && (
+            <span className="absolute left-2 top-2 rounded-full bg-stone-900/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+              Esgotado
+            </span>
+          )}
         </div>
 
         <div className="flex min-h-11 items-center justify-between gap-2 px-2.5 py-2.5 sm:px-3 sm:py-3">
@@ -89,19 +101,25 @@ export function ProductCard({ product, className }: ProductCardProps) {
           >
             {product.title}
           </h3>
-          <Button
-            type="button"
-            size="icon"
-            className="h-9 w-9 shrink-0 rounded-full bg-coffee-600 text-white hover:bg-coffee-700"
-            aria-label={`Adicionar ${product.title} ao carrinho`}
-            onClick={handleAdd}
-          >
-            {justAdded ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-          </Button>
+          {soldOut ? (
+            <span className="shrink-0 rounded-full border border-stone-200 bg-stone-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-500">
+              Indisponível
+            </span>
+          ) : (
+            <Button
+              type="button"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-full bg-coffee-600 text-white hover:bg-coffee-700"
+              aria-label={`Adicionar ${product.title} ao carrinho`}
+              onClick={handleAdd}
+            >
+              {justAdded ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+            </Button>
+          )}
         </div>
       </article>
 
@@ -142,16 +160,22 @@ export function ProductCard({ product, className }: ProductCardProps) {
             {formatPrice(product.price)}
           </p>
 
-          <Button
-            type="button"
-            className="mt-2 h-12 w-full bg-coffee-600 text-base text-white hover:bg-coffee-700"
-            onClick={() => {
-              handleAdd();
-              setOpen(false);
-            }}
-          >
-            {justAdded ? "Adicionado!" : "Adicionar ao pedido"}
-          </Button>
+          {soldOut ? (
+            <p className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50 text-sm font-semibold uppercase tracking-wide text-stone-500">
+              Esgotado
+            </p>
+          ) : (
+            <Button
+              type="button"
+              className="mt-2 h-12 w-full bg-coffee-600 text-base text-white hover:bg-coffee-700"
+              onClick={() => {
+                handleAdd();
+                setOpen(false);
+              }}
+            >
+              {justAdded ? "Adicionado!" : "Adicionar ao pedido"}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

@@ -33,17 +33,38 @@ model Product {
   isAvailable     Boolean      @default(true)
   // Soft delete: produto some da vitrine/PDV, mas permanece no histórico de vendas.
   isDeleted       Boolean      @default(false)
+  // Estoque: default alto para não esgotar o cardápio existente após migrate.
+  stockQuantity   Int          @default(999)
   pricingStrategy String? // markupPercent | marginPercent | fixedProfit | finalPrice
   pricingValue    Float?
   categoryId      String?
   category        Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   orderItems      OrderItem[]
   recipeItems     RecipeItem[]
+  reviews         Review[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
   @@index([categoryId])
   @@index([isDeleted])
+}
+
+/// Avaliação de cliente verificado (WhatsApp com pedido PAID/COMPLETED) ou manual (admin).
+model Review {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerName  String
+  customerPhone String // dígitos normalizados
+  rating        Int // 1..5
+  comment       String
+  isVisible     Boolean  @default(false) // admin libera no site público
+  isManual      Boolean  @default(false) // criado pelo administrador
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([productId, isVisible])
+  @@index([customerPhone, createdAt])
 }
 
 model Ingredient {

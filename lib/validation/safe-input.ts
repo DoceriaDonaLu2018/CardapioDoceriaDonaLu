@@ -197,3 +197,36 @@ export const failureMotivoSchema = z
   .string()
   .transform(stripHtml)
   .pipe(z.string().max(200));
+
+export const stockQuantitySchema = z
+  .number()
+  .int("Quantidade deve ser inteira.")
+  .min(0, "Estoque não pode ser negativo.")
+  .max(1_000_000);
+
+export const stockAdjustSchema = z.object({
+  productId: idSchema,
+  stockQuantity: stockQuantitySchema,
+});
+
+export const reviewSubmitSchema = z.object({
+  productId: idSchema,
+  customerName: plainText(120, "o nome"),
+  customerPhone: plainText(20, "o WhatsApp"),
+  rating: z.number().int().min(1, "Nota mínima é 1.").max(5, "Nota máxima é 5."),
+  comment: plainText(800, "o comentário"),
+});
+
+export const reviewAdminCreateSchema = z.object({
+  productId: idSchema,
+  customerName: plainText(120, "o nome"),
+  customerPhone: optionalPlainText(20),
+  rating: z.number().int().min(1).max(5),
+  comment: plainText(800, "o comentário"),
+  isVisible: z.boolean().default(true),
+});
+
+export const reviewPhoneSchema = z
+  .string()
+  .transform(stripHtml)
+  .pipe(z.string().min(10, "Informe um WhatsApp válido.").max(20));

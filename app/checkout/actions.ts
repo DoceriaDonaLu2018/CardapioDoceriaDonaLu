@@ -160,7 +160,13 @@ export async function createOnlineOrder(
       isAvailable: true,
       isDeleted: false,
     },
-    select: { id: true, title: true, price: true, costPrice: true },
+    select: {
+      id: true,
+      title: true,
+      price: true,
+      costPrice: true,
+      stockQuantity: true,
+    },
   });
 
   if (products.length !== productIds.length) {
@@ -168,6 +174,19 @@ export async function createOnlineOrder(
       success: false,
       error: "Um ou mais itens do carrinho não estão mais disponíveis.",
     };
+  }
+
+  for (const product of products) {
+    const qty = merged.get(product.id) ?? 0;
+    if (product.stockQuantity < qty) {
+      return {
+        success: false,
+        error:
+          product.stockQuantity <= 0
+            ? `"${product.title}" está esgotado.`
+            : `"${product.title}" tem apenas ${product.stockQuantity} unidade(s) em estoque.`,
+      };
+    }
   }
 
   const productMap = new Map(products.map((p) => [p.id, p]));

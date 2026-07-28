@@ -51,8 +51,17 @@ export async function syncOrderPaymentFromGateway(params: {
     throw new Error(result.reason || "Pagamento não corresponde a este pedido.");
   }
 
-  return {
-    status: result.status,
-    paid: false,
-  };
+  if (result.outcome === "stock_failed") {
+    // Pedido permanece AWAITING_PAYMENT (rollback). Retry possível se estoque voltar.
+    return { status: "stock_unavailable", paid: false };
+  }
+
+  if (result.outcome === "pending" || result.outcome === "rejected") {
+    return {
+      status: result.status,
+      paid: false,
+    };
+  }
+
+  return { status: "unknown", paid: false };
 }

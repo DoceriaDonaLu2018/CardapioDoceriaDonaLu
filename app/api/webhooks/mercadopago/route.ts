@@ -157,6 +157,16 @@ async function processPaymentId(paymentId: string): Promise<{
       await markPaymentEvent(outcome.paymentId, null, true);
       return { ok: true, result: "unmatched" };
     }
+    case "stock_failed": {
+      // Rollback mantém AWAITING_PAYMENT — retentar após repor estoque.
+      console.error("webhook stock_failed — pedido NÃO promovido", outcome);
+      return {
+        ok: false,
+        result: "stock_failed",
+        orderId: outcome.orderId,
+        retryable: true,
+      };
+    }
     default:
       return { ok: true, result: "ignored" };
   }

@@ -6,12 +6,14 @@ import {
   CreditCard,
   Loader2,
   Lock,
+  MapPin,
   QrCode,
   ShieldCheck,
 } from "lucide-react";
 
 import { startCheckoutProPayment } from "@/app/checkout/actions";
 import { formatPrice } from "@/lib/format";
+import { STORE_ADDRESS } from "@/lib/store-info";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MercadoPagoWalletBrick } from "./mercadopago-wallet-brick";
@@ -109,6 +111,12 @@ export function PaymentCheckoutClient({
             <span className="font-semibold text-coffee-700">
               {formatPrice(totalAmount)}
             </span>
+          </div>
+          <div className="flex items-start gap-2 border-t border-stone-200/80 pt-2">
+            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-coffee-600" />
+            <p className="text-xs leading-relaxed text-stone-500">
+              Retirada: {STORE_ADDRESS}
+            </p>
           </div>
         </div>
 
