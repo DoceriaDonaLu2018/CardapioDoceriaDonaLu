@@ -2,7 +2,6 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import type { Category } from "@prisma/client";
 
 import {
   createCategory,
@@ -22,8 +21,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+type CategoryFormValues = {
+  id: string;
+  name: string;
+};
+
 interface CategoryFormDialogProps {
-  category?: Category;
+  category?: CategoryFormValues;
   trigger: React.ReactNode;
 }
 
@@ -51,13 +55,17 @@ export function CategoryFormDialog({
             {isEditing ? "Editar categoria" : "Nova categoria"}
           </DialogTitle>
           <DialogDescription>
-            O slug é gerado automaticamente a partir do nome.
+            O slug é gerado automaticamente a partir do nome. A ordem de
+            exibição é definida arrastando as categorias na lista.
           </DialogDescription>
         </DialogHeader>
 
         <form action={formAction} className="space-y-4">
           {isEditing && (
             <input type="hidden" name="id" value={category!.id} />
+          )}
+          {isEditing && (
+            <input type="hidden" name="order" value={0} />
           )}
 
           <div className="space-y-2">
@@ -69,17 +77,6 @@ export function CategoryFormDialog({
               placeholder="Ex.: Cafés"
               required
               autoFocus
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="order">Ordem de exibição</Label>
-            <Input
-              id="order"
-              name="order"
-              type="number"
-              min={0}
-              defaultValue={category?.order ?? 0}
             />
           </div>
 

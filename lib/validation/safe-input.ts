@@ -104,6 +104,34 @@ export const productWriteSchema = z.object({
   isAvailable: z.boolean(),
 });
 
+/** Banner promocional — imageUrl só via upload interno. */
+export const bannerWriteSchema = z.object({
+  id: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length >= 8 ? v : undefined))
+    .pipe(idSchema.optional()),
+  imageUrl: imageUrlSchema.pipe(
+    z.string().min(1, "Envie a imagem do banner.")
+  ),
+  productId: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((v) => {
+      if (v == null || v === "" || v === "__none__") return null;
+      return v;
+    })
+    .pipe(idSchema.nullable()),
+  isActive: z.boolean(),
+  order: z.coerce.number().int().min(0).max(9999).default(0),
+});
+
+export const reorderIdsSchema = z
+  .array(idSchema)
+  .min(1)
+  .max(200);
+
 export const pdvOrderItemSchema = z.object({
   productId: idSchema,
   quantity: z.number().int().min(1).max(200),

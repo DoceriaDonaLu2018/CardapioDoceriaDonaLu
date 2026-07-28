@@ -43,11 +43,28 @@ model Product {
   recipeItems     RecipeItem[]
   reviews         Review[]
   modifierGroups  ProductModifierGroup[]
+  banners         Banner[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
   @@index([categoryId])
   @@index([isDeleted])
+}
+
+/// Banner promocional da vitrine (carrossel na home).
+model Banner {
+  id        String   @id @default(cuid())
+  imageUrl  String
+  /// Produto opcional — clique no banner leva a /produto/[id].
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, order])
+  @@index([productId])
 }
 
 /// Grupo de variações/complementos (ex.: "Escolha 100 salgados", "Até 5 adicionais").

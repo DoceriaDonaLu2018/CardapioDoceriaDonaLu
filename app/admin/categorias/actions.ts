@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/slugify";
 import { requireAdmin } from "@/lib/auth-guard";
-import { categoryWriteSchema, idSchema } from "@/lib/validation/safe-input";
+import { categoryWriteSchema, idSchema, reorderIdsSchema } from "@/lib/validation/safe-input";
 
 export type CategoryActionState = {
   error?: string;
@@ -26,7 +26,7 @@ export async function createCategory(
 
   const parsed = categoryWriteSchema.safeParse({
     name: String(formData.get("name") ?? ""),
-    order: formData.get("order") ?? 0,
+    order: 0,
   });
 
   if (!parsed.success) {
@@ -36,11 +36,16 @@ export async function createCategory(
   }
 
   try {
+    const maxOrder = await prisma.category.aggregate({
+      _max: { order: true },
+    });
+    const nextOrder = (maxOrder._max.order ?? -1) + 1;
+
     await prisma.category.create({
       data: {
         name: parsed.data.name,
         slug: slugify(parsed.data.name),
-        order: parsed.data.order,
+        order: nextOrder,
       },
     });
   } catch {
@@ -77,7 +82,7 @@ export async function updateCategory(
       data: {
         name: parsed.data.name,
         slug: slugify(parsed.data.name),
-        order: parsed.data.order,
+        // Ordem só muda via drag-and-drop (reorderCategories).
       },
     });
   } catch {
@@ -98,6 +103,53 @@ export async function deleteCategory(id: string): Promise<CategoryActionState> {
     await prisma.category.delete({ where: { id: parsedId.data } });
   } catch {
     return { error: "Não foi possível excluir a categoria." };
+  }
+
+  revalidateAll();
+  return { success: true };
+}
+
+/**
+ * Atualiza a ordem de todas as categorias em uma única transação.
+ * Recebe a lista completa de IDs na ordem desejada (índice = order).
+ */
+export async function reorderCategories(
+  orderedIds: string[]
+): Promise<CategoryActionState> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "Sessão expirada. Faça login novamente." };
+  }
+
+  const parsed = reorderIdsSchema.safeParse(orderedIds);
+  if (!parsed.success) return { error: "Ordem inválida." };
+
+  try {
+    const existing = await prisma.category.findMany({
+      select: { id: true },
+    });
+    const existingIds = new Set(existing.map((c) => c.id));
+
+    if (parsed.data.length !== existingIds.size) {
+      return { error: "Lista de categorias desatualizada. Recarregue a página." };
+    }
+    for (const id of parsed.data) {
+      if (!existingIds.has(id)) {
+        return { error: "Categoria inválida na reordenação." };
+      }
+    }
+
+    await prisma.$transaction(
+      parsed.data.map((id, index) =>
+        prisma.category.update({
+          where: { id },
+          data: { order: index },
+        })
+      )
+    );
+  } catch {
+    return { error: "Não foi possível salvar a nova ordem." };
   }
 
   revalidateAll();

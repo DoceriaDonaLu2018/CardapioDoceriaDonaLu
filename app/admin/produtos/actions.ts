@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
+import { adminModifierGroupsSchema } from "@/lib/modifiers/types";
 import { idSchema, productWriteSchema } from "@/lib/validation/safe-input";
 import { z } from "zod";
 
@@ -38,6 +39,45 @@ function parseProductForm(formData: FormData, withId: boolean) {
   });
 }
 
+function parseModifiersFromForm(formData: FormData) {
+  const raw = formData.get("modifiersJson");
+  if (raw == null || String(raw).trim() === "" || String(raw) === "[]") {
+    return {
+      ok: true as const,
+      groups: [] as z.infer<typeof adminModifierGroupsSchema>,
+    };
+  }
+  try {
+    const parsedJson = JSON.parse(String(raw)) as unknown;
+    if (!Array.isArray(parsedJson)) {
+      return { ok: false as const, error: "Payload de variações inválido." };
+    }
+    // Ignora rascunhos vazios (admin clicou "Novo grupo" e não preencheu).
+    const drafts = parsedJson.filter((item) => {
+      if (!item || typeof item !== "object") return false;
+      const name = String((item as { name?: unknown }).name ?? "").trim();
+      return name.length > 0;
+    });
+    if (drafts.length === 0) {
+      return {
+        ok: true as const,
+        groups: [] as z.infer<typeof adminModifierGroupsSchema>,
+      };
+    }
+    const parsed = adminModifierGroupsSchema.safeParse(drafts);
+    if (!parsed.success) {
+      return {
+        ok: false as const,
+        error:
+          parsed.error.issues[0]?.message ?? "Dados de variações inválidos.",
+      };
+    }
+    return { ok: true as const, groups: parsed.data };
+  } catch {
+    return { ok: false as const, error: "Payload de variações inválido." };
+  }
+}
+
 export async function createProduct(
   _prevState: ProductActionState,
   formData: FormData
@@ -51,9 +91,15 @@ export async function createProduct(
     };
   }
 
+  const modifiers = parseModifiersFromForm(formData);
+  if (!modifiers.ok) {
+    return { error: modifiers.error };
+  }
+
   const data = parsed.data;
 
   try {
+    // Nested write atômico: produto + grupos + opções — tudo ou nada.
     await prisma.product.create({
       data: {
         title: data.title,
@@ -65,6 +111,22 @@ export async function createProduct(
         costPrice: data.costPrice,
         isAvailable: data.isAvailable,
         categoryId: data.categoryId,
+        modifierGroups: {
+          create: modifiers.groups.map((group, gi) => ({
+            name: group.name,
+            minSelections: group.minSelections,
+            maxSelections: group.maxSelections,
+            sortOrder: group.sortOrder ?? gi,
+            options: {
+              create: group.options.map((opt, oi) => ({
+                name: opt.name,
+                price: opt.price,
+                maxQuantityPerOption: opt.maxQuantityPerOption,
+                sortOrder: opt.sortOrder ?? oi,
+              })),
+            },
+          })),
+        },
       },
     });
   } catch {

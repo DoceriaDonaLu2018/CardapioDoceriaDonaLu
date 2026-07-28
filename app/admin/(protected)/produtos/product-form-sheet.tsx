@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   createProduct,
@@ -32,6 +32,7 @@ import {
 import {
   ProductModifiersEditor,
   type LoadedModifierGroup,
+  type ModifierGroupForm,
 } from "./product-modifiers-editor";
 
 /** Campos mínimos usados pelo formulário (evita acoplar ao modelo Prisma completo). */
@@ -65,13 +66,21 @@ export function ProductFormSheet({
 }: ProductFormSheetProps) {
   const isEditing = Boolean(product);
   const [open, setOpen] = useState(false);
+  const [draftModifiers, setDraftModifiers] = useState<ModifierGroupForm[]>([]);
   const [state, formAction, isPending] = useActionState<
     ProductActionState,
     FormData
   >(isEditing ? updateProduct : createProduct, {});
 
+  const handleModifiersChange = useCallback((groups: ModifierGroupForm[]) => {
+    setDraftModifiers(groups);
+  }, []);
+
   useEffect(() => {
-    if (state?.success) setOpen(false);
+    if (state?.success) {
+      setOpen(false);
+      setDraftModifiers([]);
+    }
   }, [state]);
 
   return (
@@ -86,12 +95,21 @@ export function ProductFormSheet({
             {isEditing ? "Editar produto" : "Novo produto"}
           </SheetTitle>
           <SheetDescription>
-            Preencha os dados do item do cardápio.
+            {isEditing
+              ? "Atualize os dados do item do cardápio."
+              : "Cadastre o produto e, se quiser, as variações na mesma tela."}
           </SheetDescription>
         </SheetHeader>
 
         <form action={formAction} className="mt-6 space-y-4">
           {isEditing && <input type="hidden" name="id" value={product!.id} />}
+          {!isEditing && (
+            <input
+              type="hidden"
+              name="modifiersJson"
+              value={JSON.stringify(draftModifiers)}
+            />
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="title">Título</Label>
@@ -178,6 +196,14 @@ export function ProductFormSheet({
             />
           </div>
 
+          {!isEditing && (
+            <ProductModifiersEditor
+              mode="draft"
+              initialGroups={[]}
+              onChange={handleModifiersChange}
+            />
+          )}
+
           {state?.error && (
             <p className="text-sm text-red-600">{state.error}</p>
           )}
@@ -197,6 +223,7 @@ export function ProductFormSheet({
         {isEditing && product && (
           <div className="mt-6 border-t border-stone-100 pt-6">
             <ProductModifiersEditor
+              mode="persist"
               productId={product.id}
               initialGroups={product.modifierGroups ?? []}
             />

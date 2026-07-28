@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getHighlightedReviews } from "@/lib/reviews/queries";
 import { CatalogShell } from "@/components/catalog/catalog-shell";
+import { HomeBannerCarousel } from "@/components/home-banner-carousel";
 import { ProductCard } from "@/components/ProductCard";
 import { HighlightedReviewsSection } from "@/components/reviews/review-cards";
 
@@ -10,7 +11,7 @@ import { HighlightedReviewsSection } from "@/components/reviews/review-cards";
 export const revalidate = 60;
 
 export default async function Home() {
-  const [categories, highlightedReviews] = await Promise.all([
+  const [categories, highlightedReviews, banners] = await Promise.all([
     prisma.category.findMany({
       orderBy: { order: "asc" },
       select: {
@@ -50,6 +51,22 @@ export default async function Home() {
       },
     }),
     getHighlightedReviews(3),
+    prisma.banner.findMany({
+      where: { isActive: true },
+      orderBy: { order: "asc" },
+      select: {
+        id: true,
+        imageUrl: true,
+        productId: true,
+        product: {
+          select: {
+            id: true,
+            isAvailable: true,
+            isDeleted: true,
+          },
+        },
+      },
+    }),
   ]);
 
   const visibleCategories = categories.filter(
@@ -61,8 +78,24 @@ export default async function Home() {
     label: category.name,
   }));
 
+  const slides = banners.map((banner) => {
+    const linked =
+      banner.product &&
+      !banner.product.isDeleted &&
+      banner.product.isAvailable
+        ? banner.product.id
+        : null;
+    return {
+      id: banner.id,
+      imageUrl: banner.imageUrl,
+      productId: linked,
+    };
+  });
+
   return (
     <CatalogShell categories={headerCategories}>
+      <HomeBannerCarousel banners={slides} />
+
       <section className="border-b border-stone-200 bg-white">
         <div className="container flex flex-col items-center gap-4 py-16 text-center">
           <span className="rounded-full bg-coffee-100 px-4 py-1 text-sm font-medium text-coffee-700">

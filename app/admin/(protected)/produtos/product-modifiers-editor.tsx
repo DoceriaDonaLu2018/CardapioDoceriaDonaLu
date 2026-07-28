@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 
@@ -41,33 +41,43 @@ export type LoadedModifierGroup = {
   }[];
 };
 
+function toFormGroups(initial: LoadedModifierGroup[]): ModifierGroupForm[] {
+  return initial.map((g) => ({
+    id: g.id,
+    name: g.name,
+    minSelections: g.minSelections,
+    maxSelections: g.maxSelections,
+    options: g.options.map((o) => ({
+      id: o.id,
+      name: o.name,
+      price: o.price,
+      maxQuantityPerOption: o.maxQuantityPerOption,
+    })),
+  }));
+}
+
+/**
+ * Editor de grupos/opções.
+ * - `mode="draft"`: sincroniza via onChange (criação de produto unificada).
+ * - `mode="persist"`: salva com Server Action (edição).
+ */
 export function ProductModifiersEditor({
   productId,
   initialGroups,
+  mode = "persist",
+  onChange,
 }: {
-  productId: string;
+  productId?: string;
   initialGroups: LoadedModifierGroup[];
+  mode?: "persist" | "draft";
+  onChange?: (groups: ModifierGroupForm[]) => void;
 }) {
-  const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const { control, register, handleSubmit, watch } = useForm<FormValues>({
     defaultValues: {
-      groups:
-        initialGroups.length > 0
-          ? initialGroups.map((g) => ({
-              id: g.id,
-              name: g.name,
-              minSelections: g.minSelections,
-              maxSelections: g.maxSelections,
-              options: g.options.map((o) => ({
-                id: o.id,
-                name: o.name,
-                price: o.price,
-                maxQuantityPerOption: o.maxQuantityPerOption,
-              })),
-            }))
-          : [],
+      groups: initialGroups.length > 0 ? toFormGroups(initialGroups) : [],
     },
   });
 
@@ -77,7 +87,15 @@ export function ProductModifiersEditor({
     remove: removeGroup,
   } = useFieldArray({ control, name: "groups" });
 
+  const watched = watch("groups");
+
+  useEffect(() => {
+    if (mode !== "draft" || !onChange) return;
+    onChange(watched ?? []);
+  }, [watched, mode, onChange]);
+
   function onSubmit(values: FormValues) {
+    if (mode !== "persist" || !productId) return;
     setError(null);
     startTransition(async () => {
       const result = await saveProductModifiers(productId, values.groups);
@@ -96,8 +114,9 @@ export function ProductModifiersEditor({
           Variações e Complementos
         </h3>
         <p className="mt-1 text-xs text-stone-500">
-          Defina regras (ex.: mínimo 100 / máximo 100 para cento de salgados, ou
-          até 5 adicionais).
+          {mode === "draft"
+            ? "Opcional — salvos junto com o produto na criação."
+            : "Defina regras (ex.: mínimo 100 / máximo 100 para cento de salgados)."}
         </p>
       </div>
 
@@ -107,7 +126,7 @@ export function ProductModifiersEditor({
         </p>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <div className="space-y-4">
         {groupFields.map((group, groupIndex) => (
           <GroupBlock
             key={group.id}
@@ -136,23 +155,26 @@ export function ProductModifiersEditor({
             <Plus className="h-4 w-4" />
             Novo grupo
           </Button>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={isPending}
-            className="bg-coffee-600 text-white hover:bg-coffee-700"
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Salvando…
-              </>
-            ) : (
-              "Salvar variações"
-            )}
-          </Button>
+          {mode === "persist" && productId && (
+            <Button
+              type="button"
+              size="sm"
+              disabled={isPending}
+              className="bg-coffee-600 text-white hover:bg-coffee-700"
+              onClick={handleSubmit(onSubmit)}
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Salvando…
+                </>
+              ) : (
+                "Salvar variações"
+              )}
+            </Button>
+          )}
         </div>
-      </form>
+      </div>
     </div>
   );
 }
