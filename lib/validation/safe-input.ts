@@ -237,6 +237,17 @@ export const stockAdjustSchema = z.object({
   stockQuantity: stockQuantitySchema,
 });
 
+/** Atualização de estoque em lote — máx. 200 itens por request. */
+export const stockBulkUpdateSchema = z
+  .array(
+    z.object({
+      id: idSchema,
+      newStock: stockQuantitySchema,
+    })
+  )
+  .min(1, "Selecione ao menos um produto.")
+  .max(200, "Máximo de 200 produtos por atualização.");
+
 export const reviewSubmitSchema = z.object({
   productId: idSchema,
   customerName: plainText(120, "o nome"),
