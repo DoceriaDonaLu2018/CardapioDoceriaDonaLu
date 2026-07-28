@@ -33,8 +33,8 @@ model Product {
   isAvailable     Boolean      @default(true)
   // Soft delete: produto some da vitrine/PDV, mas permanece no histórico de vendas.
   isDeleted       Boolean      @default(false)
-  // Estoque: default alto para não esgotar o cardápio existente após migrate.
-  stockQuantity   Int          @default(999)
+  // Estoque: inicia em 1 para o admin ajustar a quantidade real com facilidade.
+  stockQuantity   Int          @default(1)
   pricingStrategy String? // markupPercent | marginPercent | fixedProfit | finalPrice
   pricingValue    Float?
   categoryId      String?

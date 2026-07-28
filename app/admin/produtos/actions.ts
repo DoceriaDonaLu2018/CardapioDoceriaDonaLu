@@ -111,6 +111,7 @@ export async function createProduct(
         costPrice: data.costPrice,
         isAvailable: data.isAvailable,
         categoryId: data.categoryId,
+        stockQuantity: 1,
         modifierGroups: {
           create: modifiers.groups.map((group, gi) => ({
             name: group.name,
