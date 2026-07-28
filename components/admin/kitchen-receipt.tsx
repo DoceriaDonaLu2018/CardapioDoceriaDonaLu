@@ -71,9 +71,20 @@ export function KitchenReceipt({ data }: KitchenReceiptProps) {
       <p className="mb-1 font-bold uppercase">Itens</p>
       <ul className="space-y-1">
         {data.items.map((item, index) => (
-          <li key={index} className="flex gap-2">
-            <span className="shrink-0 font-bold">{item.quantity}x</span>
-            <span className="min-w-0 flex-1 break-words">{item.title}</span>
+          <li key={index}>
+            <div className="flex gap-2">
+              <span className="shrink-0 font-bold">{item.quantity}x</span>
+              <span className="min-w-0 flex-1 break-words">{item.title}</span>
+            </div>
+            {item.modifierLines && item.modifierLines.length > 0 && (
+              <ul className="ml-4 mt-0.5 space-y-0.5">
+                {item.modifierLines.map((line) => (
+                  <li key={line} className="break-words">
+                    - {line}
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
       </ul>

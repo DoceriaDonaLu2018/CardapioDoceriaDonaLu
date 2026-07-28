@@ -5,8 +5,10 @@ import Image from "next/image";
 import { Check, Plus, X } from "lucide-react";
 
 import { formatPrice } from "@/lib/format";
+import type { ModifierGroupDef } from "@/lib/modifiers/types";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/components/cart/cart-context";
+import { ProductCustomizeDialog } from "@/components/product-customize-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,6 +25,7 @@ export interface ProductCardData {
   imageUrl: string;
   price: number;
   stockQuantity: number;
+  modifierGroups?: ModifierGroupDef[];
 }
 
 interface ProductCardProps {
@@ -32,152 +35,217 @@ interface ProductCardProps {
 
 export function ProductCard({ product, className }: ProductCardProps) {
   const [open, setOpen] = useState(false);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const titleId = useId();
   const dialogId = useId();
-  const { addItem } = useCart();
+  const { addItem, addConfiguredItem } = useCart();
   const soldOut = product.stockQuantity <= 0;
+  const groups = product.modifierGroups ?? [];
+  const hasModifiers = groups.length > 0;
 
-  function handleAdd(event?: React.MouseEvent) {
+  function flashAdded() {
+    setJustAdded(true);
+    window.setTimeout(() => setJustAdded(false), 1600);
+  }
+
+  function handleQuickAdd(event?: React.MouseEvent) {
     event?.stopPropagation();
     if (soldOut) return;
+    if (hasModifiers) {
+      setCustomizeOpen(true);
+      return;
+    }
     addItem({
       productId: product.id,
       title: product.title,
       price: product.price,
       imageUrl: product.imageUrl,
     });
-    setJustAdded(true);
-    window.setTimeout(() => setJustAdded(false), 1600);
+    flashAdded();
+  }
+
+  function handleDetailAdd() {
+    if (soldOut) return;
+    if (hasModifiers) {
+      setOpen(false);
+      setCustomizeOpen(true);
+      return;
+    }
+    addItem({
+      productId: product.id,
+      title: product.title,
+      price: product.price,
+      imageUrl: product.imageUrl,
+    });
+    flashAdded();
+    setOpen(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <article
-        className={cn(
-          "group flex h-full min-h-[44px] cursor-pointer flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm outline-none transition-all duration-300",
-          "hover:-translate-y-0.5 hover:border-coffee-200 hover:shadow-md",
-          "focus-visible:ring-2 focus-visible:ring-coffee-500 focus-visible:ring-offset-2",
-          "active:scale-[0.98]",
-          soldOut && "opacity-90",
-          className
-        )}
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        aria-controls={dialogId}
-        aria-labelledby={titleId}
-        onClick={() => setOpen(true)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-      >
-        <div className="relative aspect-square w-full overflow-hidden bg-stone-100">
-          <Image
-            src={product.imageUrl}
-            alt={product.title}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className={cn(
-              "object-cover transition-transform duration-500 ease-out group-hover:scale-105",
-              soldOut && "grayscale-[40%]"
-            )}
-          />
-          {soldOut && (
-            <span className="absolute left-2 top-2 rounded-full bg-stone-900/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
-              Esgotado
-            </span>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <article
+          className={cn(
+            "group flex h-full min-h-[44px] cursor-pointer flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm outline-none transition-all duration-300",
+            "hover:-translate-y-0.5 hover:border-coffee-200 hover:shadow-md",
+            "focus-visible:ring-2 focus-visible:ring-coffee-500 focus-visible:ring-offset-2",
+            "active:scale-[0.98]",
+            soldOut && "opacity-90",
+            className
           )}
-        </div>
-
-        <div className="flex min-h-11 items-center justify-between gap-2 px-2.5 py-2.5 sm:px-3 sm:py-3">
-          <h3
-            id={titleId}
-            className="line-clamp-2 text-left text-sm font-semibold leading-snug text-stone-800 sm:text-base"
-          >
-            {product.title}
-          </h3>
-          {soldOut ? (
-            <span className="shrink-0 rounded-full border border-stone-200 bg-stone-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-500">
-              Indisponível
-            </span>
-          ) : (
-            <Button
-              type="button"
-              size="icon"
-              className="h-9 w-9 shrink-0 rounded-full bg-coffee-600 text-white hover:bg-coffee-700"
-              aria-label={`Adicionar ${product.title} ao carrinho`}
-              onClick={handleAdd}
-            >
-              {justAdded ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-            </Button>
-          )}
-        </div>
-      </article>
-
-      <DialogContent
-        id={dialogId}
-        showCloseButton={false}
-        className="max-h-[90dvh] w-[min(100%,28rem)] gap-0 overflow-y-auto border-stone-200 bg-white p-0 sm:rounded-2xl"
-      >
-        <div className="relative">
-          <div className="relative aspect-square w-full overflow-hidden rounded-t-lg bg-stone-100 sm:aspect-[4/3] sm:rounded-t-2xl">
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          aria-controls={dialogId}
+          aria-labelledby={titleId}
+          onClick={() => setOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setOpen(true);
+            }
+          }}
+        >
+          <div className="relative aspect-square w-full overflow-hidden bg-stone-100">
             <Image
               src={product.imageUrl}
               alt={product.title}
               fill
-              sizes="(max-width: 448px) 100vw, 28rem"
-              className="object-cover"
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              className={cn(
+                "object-cover transition-transform duration-500 ease-out group-hover:scale-105",
+                soldOut && "grayscale-[40%]"
+              )}
             />
+            {soldOut && (
+              <span className="absolute left-2 top-2 rounded-full bg-stone-900/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+                Esgotado
+              </span>
+            )}
+            {hasModifiers && !soldOut && (
+              <span className="absolute bottom-2 left-2 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-semibold text-coffee-700 shadow-sm">
+                Personalize
+              </span>
+            )}
           </div>
 
-          <DialogClose
-            className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-stone-700 shadow-md backdrop-blur-sm transition-colors hover:bg-white hover:text-stone-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-coffee-500"
-            aria-label="Fechar detalhes do produto"
-          >
-            <X className="h-5 w-5" strokeWidth={2.25} />
-          </DialogClose>
-        </div>
-
-        <div className="flex flex-col gap-3 px-5 pb-6 pt-4 sm:px-6 sm:pb-7 sm:pt-5">
-          <DialogTitle className="text-left text-lg font-bold leading-tight text-stone-800 sm:text-xl">
-            {product.title}
-          </DialogTitle>
-
-          <DialogDescription className="text-left text-sm leading-relaxed text-stone-500 sm:text-base">
-            {product.description}
-          </DialogDescription>
-
-          <p className="mt-1 text-left text-lg font-bold text-coffee-700 sm:text-xl">
-            {formatPrice(product.price)}
-          </p>
-
-          {soldOut ? (
-            <p className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50 text-sm font-semibold uppercase tracking-wide text-stone-500">
-              Esgotado
-            </p>
-          ) : (
-            <Button
-              type="button"
-              className="mt-2 h-12 w-full bg-coffee-600 text-base text-white hover:bg-coffee-700"
-              onClick={() => {
-                handleAdd();
-                setOpen(false);
-              }}
+          <div className="flex min-h-11 items-center justify-between gap-2 px-2.5 py-2.5 sm:px-3 sm:py-3">
+            <h3
+              id={titleId}
+              className="line-clamp-2 text-left text-sm font-semibold leading-snug text-stone-800 sm:text-base"
             >
-              {justAdded ? "Adicionado!" : "Adicionar ao pedido"}
-            </Button>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+              {product.title}
+            </h3>
+            {soldOut ? (
+              <span className="shrink-0 rounded-full border border-stone-200 bg-stone-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-500">
+                Indisponível
+              </span>
+            ) : (
+              <Button
+                type="button"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-full bg-coffee-600 text-white hover:bg-coffee-700"
+                aria-label={
+                  hasModifiers
+                    ? `Personalizar ${product.title}`
+                    : `Adicionar ${product.title} ao carrinho`
+                }
+                onClick={handleQuickAdd}
+              >
+                {justAdded ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          </div>
+        </article>
+
+        <DialogContent
+          id={dialogId}
+          showCloseButton={false}
+          className="max-h-[90dvh] w-[min(100%,28rem)] gap-0 overflow-y-auto border-stone-200 bg-white p-0 sm:rounded-2xl"
+        >
+          <div className="relative">
+            <div className="relative aspect-square w-full overflow-hidden rounded-t-lg bg-stone-100 sm:aspect-[4/3] sm:rounded-t-2xl">
+              <Image
+                src={product.imageUrl}
+                alt={product.title}
+                fill
+                sizes="(max-width: 448px) 100vw, 28rem"
+                className="object-cover"
+              />
+            </div>
+
+            <DialogClose
+              className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-stone-700 shadow-md backdrop-blur-sm transition-colors hover:bg-white hover:text-stone-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-coffee-500"
+              aria-label="Fechar detalhes do produto"
+            >
+              <X className="h-5 w-5" strokeWidth={2.25} />
+            </DialogClose>
+          </div>
+
+          <div className="flex flex-col gap-3 px-5 pb-6 pt-4 sm:px-6 sm:pb-7 sm:pt-5">
+            <DialogTitle className="text-left text-lg font-bold leading-tight text-stone-800 sm:text-xl">
+              {product.title}
+            </DialogTitle>
+
+            <DialogDescription className="text-left text-sm leading-relaxed text-stone-500 sm:text-base">
+              {product.description}
+            </DialogDescription>
+
+            <p className="mt-1 text-left text-lg font-bold text-coffee-700 sm:text-xl">
+              {formatPrice(product.price)}
+              {hasModifiers && (
+                <span className="ml-2 text-xs font-normal text-stone-400">
+                  + complementos
+                </span>
+              )}
+            </p>
+
+            {soldOut ? (
+              <p className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50 text-sm font-semibold uppercase tracking-wide text-stone-500">
+                Esgotado
+              </p>
+            ) : (
+              <Button
+                type="button"
+                className="mt-2 h-12 w-full bg-coffee-600 text-base text-white hover:bg-coffee-700"
+                onClick={handleDetailAdd}
+              >
+                {hasModifiers
+                  ? "Escolher complementos"
+                  : justAdded
+                    ? "Adicionado!"
+                    : "Adicionar ao pedido"}
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {hasModifiers && (
+        <ProductCustomizeDialog
+          key={`${product.id}-${customizeOpen ? "open" : "closed"}`}
+          open={customizeOpen}
+          onOpenChange={setCustomizeOpen}
+          product={product}
+          groups={groups}
+          onConfirm={(modifiers) => {
+            addConfiguredItem({
+              productId: product.id,
+              title: product.title,
+              basePrice: product.price,
+              imageUrl: product.imageUrl,
+              modifiers,
+            });
+            flashAdded();
+          }}
+        />
+      )}
+    </>
   );
 }

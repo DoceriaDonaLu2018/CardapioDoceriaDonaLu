@@ -22,6 +22,24 @@ export default async function ProdutosPage() {
         isAvailable: true,
         categoryId: true,
         category: { select: { id: true, name: true } },
+        modifierGroups: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            id: true,
+            name: true,
+            minSelections: true,
+            maxSelections: true,
+            options: {
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                name: true,
+                price: true,
+                maxQuantityPerOption: true,
+              },
+            },
+          },
+        },
       },
     }),
     prisma.category.findMany({

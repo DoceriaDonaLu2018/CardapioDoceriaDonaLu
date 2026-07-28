@@ -1,7 +1,14 @@
+import {
+  formatModifiersLines,
+  parseModifiersJson,
+} from "@/lib/modifiers/types";
+
 export type KitchenReceiptItem = {
   quantity: number;
   title: string;
   unitPrice: number;
+  /** Linhas de complementos para a cozinha (ex.: "50x Coxinha"). */
+  modifierLines?: string[];
 };
 
 export type KitchenReceiptData = {
@@ -37,6 +44,7 @@ type OrderForReceipt = {
     priceAtTime: number;
     productTitle?: string | null;
     product?: { title: string } | null;
+    modifiers?: unknown;
   }[];
 };
 
@@ -133,6 +141,7 @@ export function toKitchenReceiptData(order: OrderForReceipt): KitchenReceiptData
           item.product?.title ||
           "Produto removido",
         unitPrice: item.priceAtTime,
+        modifierLines: formatModifiersLines(parseModifiersJson(item.modifiers)),
       })
     ),
   };

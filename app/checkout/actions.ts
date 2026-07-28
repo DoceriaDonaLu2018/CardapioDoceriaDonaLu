@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import {
@@ -16,6 +17,12 @@ import {
 } from "@/lib/payments/mercadopago";
 import { assertMemoryRateLimit } from "@/lib/payments/rate-limit";
 import { getSelectablePickupSlots } from "@/lib/store-settings";
+import {
+  cartModifiersInputSchema,
+  validateAndBuildModifierSnapshot,
+  type ModifierGroupDef,
+  type ModifierSelectionSnapshot,
+} from "@/lib/modifiers/types";
 import { stripHtml } from "@/lib/validation/safe-input";
 
 const checkoutItemSchema = z.object({
@@ -25,6 +32,8 @@ const checkoutItemSchema = z.object({
     .max(64)
     .regex(/^[a-zA-Z0-9_-]+$/),
   quantity: z.number().int().min(1).max(50),
+  /** Payload leve: só IDs + qty — preços/nomes vêm do banco. */
+  modifiers: cartModifiersInputSchema.optional().default([]),
 });
 
 const checkoutSchema = z
@@ -190,14 +199,15 @@ export async function createOnlineOrder(
   const rateError = await assertRateLimits(phone);
   if (rateError) return rateError;
 
-  const merged = new Map<string, number>();
+  // Estoque: soma por produto (linhas com mods diferentes contam juntas).
+  const qtyByProduct = new Map<string, number>();
   for (const item of input.items) {
-    merged.set(
+    qtyByProduct.set(
       item.productId,
-      (merged.get(item.productId) ?? 0) + item.quantity
+      (qtyByProduct.get(item.productId) ?? 0) + item.quantity
     );
   }
-  const productIds = [...merged.keys()];
+  const productIds = [...qtyByProduct.keys()];
 
   const products = await prisma.product.findMany({
     where: {
@@ -211,6 +221,24 @@ export async function createOnlineOrder(
       price: true,
       costPrice: true,
       stockQuantity: true,
+      modifierGroups: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          name: true,
+          minSelections: true,
+          maxSelections: true,
+          options: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              maxQuantityPerOption: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -222,7 +250,7 @@ export async function createOnlineOrder(
   }
 
   for (const product of products) {
-    const qty = merged.get(product.id) ?? 0;
+    const qty = qtyByProduct.get(product.id) ?? 0;
     if (product.stockQuantity < qty) {
       return {
         success: false,
@@ -235,17 +263,58 @@ export async function createOnlineOrder(
   }
 
   const productMap = new Map(products.map((p) => [p.id, p]));
-  const orderItems = productIds.map((productId) => {
-    const product = productMap.get(productId)!;
-    const quantity = merged.get(productId)!;
-    return {
+  const orderItems: {
+    productId: string;
+    productTitle: string;
+    quantity: number;
+    priceAtTime: number;
+    costAtTime: number;
+    modifiers: ModifierSelectionSnapshot[] | null;
+  }[] = [];
+
+  for (const item of input.items) {
+    const product = productMap.get(item.productId);
+    if (!product) {
+      return {
+        success: false,
+        error: "Um ou mais itens do carrinho não estão mais disponíveis.",
+      };
+    }
+
+    const groups: ModifierGroupDef[] = product.modifierGroups.map((g) => ({
+      id: g.id,
+      name: g.name,
+      minSelections: g.minSelections,
+      maxSelections: g.maxSelections,
+      options: g.options.map((o) => ({
+        id: o.id,
+        name: o.name,
+        price: o.price,
+        maxQuantityPerOption: o.maxQuantityPerOption,
+      })),
+    }));
+
+    const validated = validateAndBuildModifierSnapshot(groups, item.modifiers);
+    if (!validated.ok) {
+      return {
+        success: false,
+        error: `"${product.title}": ${validated.error}`,
+      };
+    }
+
+    const priceAtTime =
+      Math.round((product.price + validated.extras) * 100) / 100;
+
+    orderItems.push({
       productId: product.id,
       productTitle: product.title,
-      quantity,
-      priceAtTime: product.price,
+      quantity: item.quantity,
+      priceAtTime,
       costAtTime: product.costPrice,
-    };
-  });
+      modifiers:
+        validated.snapshot.length > 0 ? validated.snapshot : null,
+    });
+  }
 
   const totalAmount =
     Math.round(
@@ -276,7 +345,19 @@ export async function createOnlineOrder(
       advancePayment: 0,
       paymentProvider: "mercadopago",
       paymentAccessToken: accessToken,
-      items: { create: orderItems },
+      items: {
+        create: orderItems.map((item) => ({
+          productId: item.productId,
+          productTitle: item.productTitle,
+          quantity: item.quantity,
+          priceAtTime: item.priceAtTime,
+          costAtTime: item.costAtTime,
+          modifiers:
+            item.modifiers === null
+              ? Prisma.JsonNull
+              : (item.modifiers as Prisma.InputJsonValue),
+        })),
+      },
     },
     select: { id: true },
   });

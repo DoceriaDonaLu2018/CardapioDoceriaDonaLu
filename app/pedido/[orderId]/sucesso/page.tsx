@@ -5,6 +5,10 @@ import { CheckCircle2, Clock3, MapPin, MessageCircle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { OrderStatus, PICKUP_FULFILLMENT_LABEL } from "@/lib/orders/constants";
 import { formatPhone, formatPrice } from "@/lib/format";
+import {
+  formatModifiersLines,
+  parseModifiersJson,
+} from "@/lib/modifiers/types";
 import { parseMercadoPagoReturnParams } from "@/lib/payments/mp-return";
 import { syncOrderPaymentFromGateway } from "@/lib/payments/sync-order-payment";
 import { Button } from "@/components/ui/button";
@@ -114,6 +118,7 @@ export default async function PedidoSucessoPage({
           quantity: true,
           productTitle: true,
           priceAtTime: true,
+          modifiers: true,
         },
       },
     },
@@ -212,20 +217,34 @@ export default async function PedidoSucessoPage({
               {formatPrice(order.totalAmount)}
             </span>
           </div>
-          <ul className="space-y-1 border-t border-stone-200 pt-3">
-            {order.items.map((item, index) => (
-              <li
-                key={`${item.productTitle}-${index}`}
-                className="flex justify-between gap-3 text-stone-700"
-              >
-                <span>
-                  {item.quantity}× {item.productTitle}
-                </span>
-                <span className="shrink-0 text-stone-500">
-                  {formatPrice(item.priceAtTime * item.quantity)}
-                </span>
-              </li>
-            ))}
+          <ul className="space-y-2 border-t border-stone-200 pt-3">
+            {order.items.map((item, index) => {
+              const modLines = formatModifiersLines(
+                parseModifiersJson(item.modifiers)
+              );
+              return (
+                <li
+                  key={`${item.productTitle}-${index}`}
+                  className="text-stone-700"
+                >
+                  <div className="flex justify-between gap-3">
+                    <span>
+                      {item.quantity}× {item.productTitle}
+                    </span>
+                    <span className="shrink-0 text-stone-500">
+                      {formatPrice(item.priceAtTime * item.quantity)}
+                    </span>
+                  </div>
+                  {modLines.length > 0 && (
+                    <ul className="mt-0.5 space-y-0.5 pl-3 text-xs text-stone-500">
+                      {modLines.map((line) => (
+                        <li key={line}>· {line}</li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
 

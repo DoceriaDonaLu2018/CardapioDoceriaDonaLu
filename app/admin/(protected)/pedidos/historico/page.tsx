@@ -50,6 +50,7 @@ export default async function HistoricoPedidosPage({
               quantity: true;
               priceAtTime: true;
               productTitle: true;
+              modifiers: true;
               product: { select: { title: true } };
             };
           };
@@ -82,6 +83,7 @@ export default async function HistoricoPedidosPage({
             quantity: true,
             priceAtTime: true,
             productTitle: true,
+            modifiers: true,
             product: { select: { title: true } },
           },
         },
@@ -108,6 +110,7 @@ export default async function HistoricoPedidosPage({
       quantity: item.quantity,
       priceAtTime: item.priceAtTime,
       productTitle: item.productTitle,
+      modifiers: item.modifiers ?? null,
       product: {
         title:
           (item.productTitle && item.productTitle.trim()) ||

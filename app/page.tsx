@@ -27,6 +27,24 @@ export default async function Home() {
             imageUrl: true,
             price: true,
             stockQuantity: true,
+            modifierGroups: {
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                name: true,
+                minSelections: true,
+                maxSelections: true,
+                options: {
+                  orderBy: { sortOrder: "asc" },
+                  select: {
+                    id: true,
+                    name: true,
+                    price: true,
+                    maxQuantityPerOption: true,
+                  },
+                },
+              },
+            },
           },
         },
       },

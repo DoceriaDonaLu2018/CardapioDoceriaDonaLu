@@ -10,27 +10,60 @@ import {
   type ReactNode,
 } from "react";
 
+import type { ModifierSelectionSnapshot } from "@/lib/modifiers/types";
+import { extrasUnitPrice } from "@/lib/modifiers/types";
+
 export type CartItem = {
+  /** Linha única — mesmo produto com mods diferentes não mescla. */
+  lineId: string;
   productId: string;
   title: string;
+  /** Preço unitário já com extras de modificadores. */
   price: number;
+  basePrice: number;
   imageUrl: string;
   quantity: number;
+  modifiers: ModifierSelectionSnapshot[];
 };
 
 type CartContextValue = {
   items: CartItem[];
   itemCount: number;
   total: number;
-  addItem: (item: Omit<CartItem, "quantity">, quantity?: number) => void;
-  setQuantity: (productId: string, quantity: number) => void;
-  removeItem: (productId: string) => void;
+  /** Adiciona produto simples (sem mods) — compatível com fluxo antigo. */
+  addItem: (
+    item: {
+      productId: string;
+      title: string;
+      price: number;
+      imageUrl: string;
+    },
+    quantity?: number
+  ) => void;
+  /** Adiciona produto configurado (com ou sem mods). */
+  addConfiguredItem: (item: {
+    productId: string;
+    title: string;
+    basePrice: number;
+    imageUrl: string;
+    modifiers: ModifierSelectionSnapshot[];
+    quantity?: number;
+  }) => void;
+  setQuantity: (lineId: string, quantity: number) => void;
+  removeItem: (lineId: string) => void;
   clear: () => void;
 };
 
-const STORAGE_KEY = "ddl:cart:v1";
+const STORAGE_KEY = "ddl:cart:v2";
 
 const CartContext = createContext<CartContextValue | null>(null);
+
+function newLineId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `line_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
 
 function loadCart(): CartItem[] {
   if (typeof window === "undefined") return [];
@@ -39,15 +72,23 @@ function loadCart(): CartItem[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as CartItem[];
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item) =>
-        item &&
-        typeof item.productId === "string" &&
-        typeof item.title === "string" &&
-        typeof item.price === "number" &&
-        typeof item.quantity === "number" &&
-        item.quantity > 0
-    );
+    return parsed
+      .filter(
+        (item) =>
+          item &&
+          typeof item.productId === "string" &&
+          typeof item.title === "string" &&
+          typeof item.price === "number" &&
+          typeof item.quantity === "number" &&
+          item.quantity > 0
+      )
+      .map((item) => ({
+        ...item,
+        lineId: item.lineId || newLineId(),
+        basePrice:
+          typeof item.basePrice === "number" ? item.basePrice : item.price,
+        modifiers: Array.isArray(item.modifiers) ? item.modifiers : [],
+      }));
   } catch {
     return [];
   }
@@ -67,38 +108,90 @@ export function CartProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items, hydrated]);
 
-  const addItem = useCallback(
-    (item: Omit<CartItem, "quantity">, quantity = 1) => {
-      const qty = Math.max(1, Math.floor(quantity));
+  const addConfiguredItem = useCallback(
+    (item: {
+      productId: string;
+      title: string;
+      basePrice: number;
+      imageUrl: string;
+      modifiers: ModifierSelectionSnapshot[];
+      quantity?: number;
+    }) => {
+      const qty = Math.max(1, Math.floor(item.quantity ?? 1));
+      const extras = extrasUnitPrice(item.modifiers);
+      const unitPrice = Math.round((item.basePrice + extras) * 100) / 100;
+      const hasMods = item.modifiers.length > 0;
+
       setItems((prev) => {
-        const existing = prev.find((line) => line.productId === item.productId);
-        if (existing) {
-          return prev.map((line) =>
-            line.productId === item.productId
-              ? { ...line, quantity: Math.min(50, line.quantity + qty) }
-              : line
+        // Sem mods: mescla por productId (comportamento antigo).
+        if (!hasMods) {
+          const existing = prev.find(
+            (line) =>
+              line.productId === item.productId && line.modifiers.length === 0
           );
+          if (existing) {
+            return prev.map((line) =>
+              line.lineId === existing.lineId
+                ? { ...line, quantity: Math.min(50, line.quantity + qty) }
+                : line
+            );
+          }
         }
-        return [...prev, { ...item, quantity: qty }];
+
+        return [
+          ...prev,
+          {
+            lineId: newLineId(),
+            productId: item.productId,
+            title: item.title,
+            basePrice: item.basePrice,
+            price: unitPrice,
+            imageUrl: item.imageUrl,
+            quantity: qty,
+            modifiers: item.modifiers,
+          },
+        ];
       });
     },
     []
   );
 
-  const setQuantity = useCallback((productId: string, quantity: number) => {
+  const addItem = useCallback(
+    (
+      item: {
+        productId: string;
+        title: string;
+        price: number;
+        imageUrl: string;
+      },
+      quantity = 1
+    ) => {
+      addConfiguredItem({
+        productId: item.productId,
+        title: item.title,
+        basePrice: item.price,
+        imageUrl: item.imageUrl,
+        modifiers: [],
+        quantity,
+      });
+    },
+    [addConfiguredItem]
+  );
+
+  const setQuantity = useCallback((lineId: string, quantity: number) => {
     const qty = Math.floor(quantity);
     setItems((prev) => {
-      if (qty <= 0) return prev.filter((line) => line.productId !== productId);
+      if (qty <= 0) return prev.filter((line) => line.lineId !== lineId);
       return prev.map((line) =>
-        line.productId === productId
+        line.lineId === lineId
           ? { ...line, quantity: Math.min(50, qty) }
           : line
       );
     });
   }, []);
 
-  const removeItem = useCallback((productId: string) => {
-    setItems((prev) => prev.filter((line) => line.productId !== productId));
+  const removeItem = useCallback((lineId: string) => {
+    setItems((prev) => prev.filter((line) => line.lineId !== lineId));
   }, []);
 
   const clear = useCallback(() => setItems([]), []);
@@ -114,11 +207,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       itemCount,
       total,
       addItem,
+      addConfiguredItem,
       setQuantity,
       removeItem,
       clear,
     };
-  }, [items, addItem, setQuantity, removeItem, clear]);
+  }, [items, addItem, addConfiguredItem, setQuantity, removeItem, clear]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

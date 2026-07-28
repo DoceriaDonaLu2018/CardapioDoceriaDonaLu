@@ -9,6 +9,7 @@ import { Loader2, Lock, MapPin } from "lucide-react";
 import { createOnlineOrder } from "@/app/checkout/actions";
 import { useCart } from "@/components/cart/cart-context";
 import { formatPhone, formatPrice } from "@/lib/format";
+import { formatModifiersLines } from "@/lib/modifiers/types";
 import { STORE_ADDRESS } from "@/lib/store-info";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -78,6 +79,13 @@ export function CheckoutForm({
         items: items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
+          modifiers: item.modifiers.map((group) => ({
+            groupId: group.groupId,
+            options: group.options.map((opt) => ({
+              optionId: opt.optionId,
+              quantity: opt.quantity,
+            })),
+          })),
         })),
       });
 
@@ -279,27 +287,39 @@ export function CheckoutForm({
       <aside className="h-fit space-y-4 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 lg:sticky lg:top-24">
         <h2 className="font-serif text-xl font-bold text-stone-800">Resumo</h2>
         <ul className="space-y-3">
-          {items.map((item) => (
-            <li key={item.productId} className="flex gap-3">
-              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-stone-100">
-                <Image
-                  src={item.imageUrl}
-                  alt=""
-                  fill
-                  sizes="48px"
-                  className="object-cover"
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-stone-800">
-                  {item.quantity}× {item.title}
-                </p>
-                <p className="text-sm text-coffee-700">
-                  {formatPrice(item.price * item.quantity)}
-                </p>
-              </div>
-            </li>
-          ))}
+          {items.map((item) => {
+            const modLines = formatModifiersLines(item.modifiers);
+            return (
+              <li key={item.lineId} className="flex gap-3">
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-stone-100">
+                  <Image
+                    src={item.imageUrl}
+                    alt=""
+                    fill
+                    sizes="48px"
+                    className="object-cover"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-stone-800">
+                    {item.quantity}× {item.title}
+                  </p>
+                  {modLines.length > 0 && (
+                    <ul className="mt-0.5 space-y-0.5">
+                      {modLines.map((line) => (
+                        <li key={line} className="truncate text-xs text-stone-500">
+                          · {line}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-sm text-coffee-700">
+                    {formatPrice(item.price * item.quantity)}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
         </ul>
 
         <div className="space-y-1 border-t border-stone-100 pt-3 text-sm">

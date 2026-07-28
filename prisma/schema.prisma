@@ -42,11 +42,43 @@ model Product {
   orderItems      OrderItem[]
   recipeItems     RecipeItem[]
   reviews         Review[]
+  modifierGroups  ProductModifierGroup[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
   @@index([categoryId])
   @@index([isDeleted])
+}
+
+/// Grupo de variações/complementos (ex.: "Escolha 100 salgados", "Até 5 adicionais").
+model ProductModifierGroup {
+  id             String                 @id @default(cuid())
+  productId      String
+  product        Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name           String
+  minSelections  Int                    @default(0) // 0 = opcional; 100 = exatamente/mínimo 100 unidades
+  maxSelections  Int                    @default(1) // teto total do grupo
+  sortOrder      Int                    @default(0)
+  options        ProductModifierOption[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([productId, sortOrder])
+}
+
+/// Opção dentro de um grupo (ex.: Coxinha, Morango).
+model ProductModifierOption {
+  id                   String              @id @default(cuid())
+  groupId              String
+  group                ProductModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name                 String
+  price                Float               @default(0) // custo extra por unidade da opção
+  maxQuantityPerOption Int                 @default(1) // quantas vezes a mesma opção pode entrar
+  sortOrder            Int                 @default(0)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([groupId, sortOrder])
 }
 
 /// Avaliação de cliente verificado (WhatsApp com pedido PAID/COMPLETED) ou manual (admin).
@@ -165,6 +197,8 @@ model OrderItem {
   quantity     Int
   priceAtTime  Float
   costAtTime   Float   @default(0)
+  /// Snapshot das escolhas de modificadores (JSON) — null em itens sem variação.
+  modifiers    Json?
 
   @@index([orderId])
   @@index([productId])

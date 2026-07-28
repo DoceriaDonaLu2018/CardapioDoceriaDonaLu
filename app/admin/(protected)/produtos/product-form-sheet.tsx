@@ -29,6 +29,10 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  ProductModifiersEditor,
+  type LoadedModifierGroup,
+} from "./product-modifiers-editor";
 
 /** Campos mínimos usados pelo formulário (evita acoplar ao modelo Prisma completo). */
 export type ProductFormValues = {
@@ -40,6 +44,7 @@ export type ProductFormValues = {
   costPrice: number;
   isAvailable: boolean;
   categoryId: string | null;
+  modifierGroups?: LoadedModifierGroup[];
 };
 
 export type ProductFormCategory = {
@@ -74,7 +79,7 @@ export function ProductFormSheet({
       <SheetTrigger asChild>{trigger}</SheetTrigger>
       <SheetContent
         side="right"
-        className="w-full overflow-y-auto sm:max-w-md"
+        className="w-full overflow-y-auto sm:max-w-lg"
       >
         <SheetHeader>
           <SheetTitle>
@@ -188,6 +193,15 @@ export function ProductFormSheet({
             </Button>
           </SheetFooter>
         </form>
+
+        {isEditing && product && (
+          <div className="mt-6 border-t border-stone-100 pt-6">
+            <ProductModifiersEditor
+              productId={product.id}
+              initialGroups={product.modifierGroups ?? []}
+            />
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

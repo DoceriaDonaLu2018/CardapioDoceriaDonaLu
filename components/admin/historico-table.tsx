@@ -32,6 +32,7 @@ export type HistoricoOrderRow = {
     priceAtTime: number;
     productTitle?: string | null;
     product: { title: string };
+    modifiers?: unknown;
   }[];
 };
 
