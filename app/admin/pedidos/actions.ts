@@ -263,8 +263,8 @@ export async function cancelOrder(orderId: string): Promise<OrderActionState> {
       return { error: "Pedidos concluídos não podem ser cancelados por aqui." };
     }
 
-    // PENDING (PDV), PAID (online) ou AWAITING com reserva — devolve estoque.
-    // AWAITING legado (stockReserved=false) NÃO incrementa (nunca baixou).
+    // PENDING/PAID baixaram estoque. AWAITING só se stockReserved (legado).
+    // REQUIRES_REFUND: cobrado sem baixa — não incrementa.
     const shouldRestore =
       existing.status === "PENDING" ||
       existing.status === "PAID" ||
@@ -322,6 +322,12 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
       return {
         error:
           "Pedidos aguardando pagamento online não podem ser reabertos no PDV. Cancele ou aguarde a confirmação.",
+      };
+    }
+    if (existing.status === "REQUIRES_REFUND") {
+      return {
+        error:
+          "Pedido pago sem estoque (REQUIRES_REFUND). Faça o estorno no Mercado Pago e cancele o pedido.",
       };
     }
     if (existing.status === "PAID") {

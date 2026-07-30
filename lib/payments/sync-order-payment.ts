@@ -34,6 +34,10 @@ export async function syncOrderPaymentFromGateway(params: {
     return { status: "approved", paid: true };
   }
 
+  if (order.status === OrderStatus.REQUIRES_REFUND) {
+    return { status: "requires_refund", paid: false };
+  }
+
   const result = await applyMercadoPagoPaymentId(params.paymentId);
 
   if (result.outcome === "paid" || result.outcome === "already_paid") {
@@ -51,9 +55,12 @@ export async function syncOrderPaymentFromGateway(params: {
     throw new Error(result.reason || "Pagamento não corresponde a este pedido.");
   }
 
-  if (result.outcome === "stock_failed") {
-    // Pedido permanece AWAITING_PAYMENT (rollback). Retry possível se estoque voltar.
-    return { status: "stock_unavailable", paid: false };
+  if (result.outcome === "requires_refund") {
+    if (result.orderId !== order.id) {
+      throw new Error("Pagamento não corresponde a este pedido.");
+    }
+    // Cobrado no gateway, sem estoque — admin precisa estornar.
+    return { status: "requires_refund", paid: false };
   }
 
   if (result.outcome === "pending" || result.outcome === "rejected") {

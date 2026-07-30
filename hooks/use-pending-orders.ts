@@ -27,6 +27,7 @@ export type PendingOrder = {
 
 type PendingResponse = {
   count: number;
+  requiresRefundCount?: number;
   orders: PendingOrder[];
 };
 
@@ -62,6 +63,7 @@ export function usePendingOrders(
 
   const [orders, setOrders] = useState<PendingOrder[]>([]);
   const [count, setCount] = useState(0);
+  const [requiresRefundCount, setRequiresRefundCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -85,6 +87,7 @@ export function usePendingOrders(
       if (controller.signal.aborted) return;
 
       setCount(data.count ?? 0);
+      setRequiresRefundCount(data.requiresRefundCount ?? 0);
       if (!countOnly) {
         setOrders(data.orders ?? []);
       }
@@ -119,5 +122,5 @@ export function usePendingOrders(
     };
   }, [enabled, refresh, intervalMs]);
 
-  return { orders, count, isLoading, refresh };
+  return { orders, count, requiresRefundCount, isLoading, refresh };
 }

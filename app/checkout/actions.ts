@@ -20,10 +20,6 @@ import { getSelectablePickupSlots, getStoreSettings } from "@/lib/store-settings
 import { checkStoreStatus } from "@/lib/store-status";
 import { quoteCoupon, quoteGifts } from "@/lib/pricing/coupons-gifts";
 import {
-  decrementStockOrThrow,
-  InsufficientStockError,
-} from "@/lib/inventory/stock";
-import {
   cartModifiersInputSchema,
   validateAndBuildModifierSnapshot,
   type ModifierGroupDef,
@@ -166,7 +162,10 @@ async function assertRateLimits(phone: string): Promise<ActionErr | null> {
 /**
  * Cria o pedido ONLINE (AWAITING_PAYMENT) SEM chamar o gateway ainda.
  * O pagamento acontece no Checkout Pro do Mercado Pago (redirect).
- * Reserva estoque atomicamente (stockReserved) para não cobrar sem baixa.
+ *
+ * Estoque: apenas VALIDA disponibilidade aqui. A baixa definitiva ocorre
+ * no webhook/sync quando o pagamento estiver `approved` (evita retenção
+ * permanente se o cliente abandonar o checkout).
  */
 export async function createOnlineOrder(
   rawInput: unknown
@@ -382,60 +381,42 @@ export async function createOnlineOrder(
 
   const accessToken = createPaymentAccessToken();
 
-  let order: { id: string };
-  try {
-    order = await prisma.$transaction(async (tx) => {
-      // Reserva atômica — evita oversell e paga-sem-estoque no webhook.
-      for (const [productId, qty] of qtyByProduct) {
-        await decrementStockOrThrow(tx, productId, qty);
-      }
-
-      return tx.order.create({
-        data: {
-          customerName: input.customerName.trim(),
-          customerPhone: phone,
-          customerEmail: input.customerEmail.trim().toLowerCase(),
-          deliveryAddress: PICKUP_FULFILLMENT_LABEL,
-          deliveryNotes: input.deliveryNotes?.trim() || null,
-          pickupTime: input.pickupTime,
-          deliveryDate,
-          status: OrderStatus.AWAITING_PAYMENT,
-          source: OrderSource.ONLINE,
-          totalAmount,
-          discountAmount,
-          couponCode,
-          giftName,
-          advancePayment: 0,
-          paymentProvider: "mercadopago",
-          paymentAccessToken: accessToken,
-          stockReserved: true,
-          items: {
-            create: orderItems.map((item) => ({
-              productId: item.productId,
-              productTitle: item.productTitle,
-              quantity: item.quantity,
-              priceAtTime: item.priceAtTime,
-              costAtTime: item.costAtTime,
-              modifiers:
-                item.modifiers === null
-                  ? Prisma.JsonNull
-                  : (item.modifiers as Prisma.InputJsonValue),
-            })),
-          },
-        },
-        select: { id: true },
-      });
-    });
-  } catch (error) {
-    if (error instanceof InsufficientStockError) {
-      return {
-        success: false,
-        error:
-          "Estoque insuficiente para um ou mais itens. Atualize o carrinho e tente de novo.",
-      };
-    }
-    throw error;
-  }
+  // Sem decrement: só cria o pedido. Race final é tratada no webhook (atômico).
+  const order = await prisma.order.create({
+    data: {
+      customerName: input.customerName.trim(),
+      customerPhone: phone,
+      customerEmail: input.customerEmail.trim().toLowerCase(),
+      deliveryAddress: PICKUP_FULFILLMENT_LABEL,
+      deliveryNotes: input.deliveryNotes?.trim() || null,
+      pickupTime: input.pickupTime,
+      deliveryDate,
+      status: OrderStatus.AWAITING_PAYMENT,
+      source: OrderSource.ONLINE,
+      totalAmount,
+      discountAmount,
+      couponCode,
+      giftName,
+      advancePayment: 0,
+      paymentProvider: "mercadopago",
+      paymentAccessToken: accessToken,
+      stockReserved: false,
+      items: {
+        create: orderItems.map((item) => ({
+          productId: item.productId,
+          productTitle: item.productTitle,
+          quantity: item.quantity,
+          priceAtTime: item.priceAtTime,
+          costAtTime: item.costAtTime,
+          modifiers:
+            item.modifiers === null
+              ? Prisma.JsonNull
+              : (item.modifiers as Prisma.InputJsonValue),
+        })),
+      },
+    },
+    select: { id: true },
+  });
 
   return {
     success: true,

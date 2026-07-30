@@ -97,7 +97,11 @@ async function processPaymentId(paymentId: string): Promise<{
       where: { id: existing.orderId },
       select: { status: true },
     });
-    if (order?.status === "PAID" || order?.status === "COMPLETED") {
+    if (
+      order?.status === "PAID" ||
+      order?.status === "COMPLETED" ||
+      order?.status === "REQUIRES_REFUND"
+    ) {
       return { ok: true, result: "duplicate_paid", orderId: existing.orderId };
     }
     // Evento existe mas pedido ainda NÃO está pago → continua (fix do bug).
@@ -157,14 +161,18 @@ async function processPaymentId(paymentId: string): Promise<{
       await markPaymentEvent(outcome.paymentId, null, true);
       return { ok: true, result: "unmatched" };
     }
-    case "stock_failed": {
-      // Só ocorre em pedidos LEGADOS (sem stockReserved). Retentar após repor estoque.
-      console.error("webhook stock_failed — pedido NÃO promovido", outcome);
+    case "requires_refund": {
+      // Pagamento aprovado no MP, estoque insuficiente — NÃO retentar (evita loop).
+      // Admin deve estornar / contatar cliente. Pedido fora da cozinha.
+      console.error(
+        "webhook REQUIRES_REFUND — cobrado sem estoque",
+        outcome
+      );
+      await markPaymentEvent(outcome.paymentId, outcome.orderId, true);
       return {
-        ok: false,
-        result: "stock_failed",
+        ok: true,
+        result: "requires_refund",
         orderId: outcome.orderId,
-        retryable: true,
       };
     }
     default:

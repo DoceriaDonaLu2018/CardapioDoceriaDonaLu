@@ -92,6 +92,13 @@ export default async function PedidoSucessoPage({
           `/pedido/${orderId}/pendente?token=${encodeURIComponent(token)}&payment_id=${encodeURIComponent(paymentId)}`
         );
       }
+      if (syncStatus === "requires_refund") {
+        redirect(
+          `/pedido/${orderId}/falha?token=${encodeURIComponent(token)}&motivo=${encodeURIComponent(
+            "Pagamento recebido, mas o item esgotou. Nossa equipe entrará em contato para reembolso ou ajuste."
+          )}`
+        );
+      }
       redirect(
         `/pedido/${orderId}/falha?token=${encodeURIComponent(token)}&motivo=${encodeURIComponent(`Pagamento ${syncStatus}`)}`
       );

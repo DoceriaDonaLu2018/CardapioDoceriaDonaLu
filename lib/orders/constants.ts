@@ -3,6 +3,7 @@
  *
  * REGRA DE OURO (cozinha / painel):
  * - AWAITING_PAYMENT → NUNCA aparece na produção
+ * - REQUIRES_REFUND → pago no gateway mas sem estoque (alerta admin; fora da cozinha)
  * - PAID | PENDING    → prontos para preparo/impressão
  */
 export const OrderStatus = {
@@ -11,6 +12,8 @@ export const OrderStatus = {
   PENDING: "PENDING",
   COMPLETED: "COMPLETED",
   CANCELED: "CANCELED",
+  /** Pagamento approved no MP, mas baixa de estoque falhou (race). Exige estorno/contato. */
+  REQUIRES_REFUND: "REQUIRES_REFUND",
 } as const;
 
 export type OrderStatusValue =

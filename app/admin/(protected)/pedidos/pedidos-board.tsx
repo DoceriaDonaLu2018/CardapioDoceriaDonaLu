@@ -73,7 +73,8 @@ export function PedidosBoard() {
   const [isAutoPrintEnabled, setIsAutoPrintEnabled] = useState(false);
   const router = useRouter();
 
-  const { orders, isLoading, refresh } = usePendingOrders(isAutoPrintEnabled);
+  const { orders, isLoading, refresh, requiresRefundCount } =
+    usePendingOrders(isAutoPrintEnabled);
 
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -341,6 +342,17 @@ export function PedidosBoard() {
           Pausar
         </button>
       </div>
+
+      {requiresRefundCount > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            <strong>{requiresRefundCount}</strong> pedido(s) com pagamento
+            aprovado sem estoque (REQUIRES_REFUND). Estorne no Mercado Pago e
+            cancele o pedido no painel — não entram na cozinha.
+          </p>
+        </div>
+      )}
 
       {error && (
         <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">

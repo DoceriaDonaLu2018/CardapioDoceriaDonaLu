@@ -30,40 +30,44 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     if (countOnly) {
-      const count = await prisma.order.count({
-        where: kitchenWhere,
-      });
-      return NextResponse.json({ count, orders: [] });
+      const [count, requiresRefundCount] = await Promise.all([
+        prisma.order.count({ where: kitchenWhere }),
+        prisma.order.count({ where: { status: "REQUIRES_REFUND" } }),
+      ]);
+      return NextResponse.json({ count, requiresRefundCount, orders: [] });
     }
 
-    const orders = await prisma.order.findMany({
-      where: kitchenWhere,
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        customerName: true,
-        customerPhone: true,
-        waiterName: true,
-        createdAt: true,
-        totalAmount: true,
-        advancePayment: true,
-        status: true,
-        source: true,
-        deliveryAddress: true,
-        paymentMethod: true,
-        pickupTime: true,
-        deliveryDate: true,
-        items: {
-          select: {
-            quantity: true,
-            priceAtTime: true,
-            productTitle: true,
-            modifiers: true,
-            product: { select: { title: true } },
+    const [orders, requiresRefundCount] = await Promise.all([
+      prisma.order.findMany({
+        where: kitchenWhere,
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          customerName: true,
+          customerPhone: true,
+          waiterName: true,
+          createdAt: true,
+          totalAmount: true,
+          advancePayment: true,
+          status: true,
+          source: true,
+          deliveryAddress: true,
+          paymentMethod: true,
+          pickupTime: true,
+          deliveryDate: true,
+          items: {
+            select: {
+              quantity: true,
+              priceAtTime: true,
+              productTitle: true,
+              modifiers: true,
+              product: { select: { title: true } },
+            },
           },
         },
-      },
-    });
+      }),
+      prisma.order.count({ where: { status: "REQUIRES_REFUND" } }),
+    ]);
 
     const serialized = orders.map((order) => ({
       id: order.id,
@@ -92,7 +96,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       })),
     }));
 
-    return NextResponse.json({ count: serialized.length, orders: serialized });
+    return NextResponse.json({
+      count: serialized.length,
+      requiresRefundCount,
+      orders: serialized,
+    });
   } catch (error) {
     console.error("pending orders:", error);
     return NextResponse.json(

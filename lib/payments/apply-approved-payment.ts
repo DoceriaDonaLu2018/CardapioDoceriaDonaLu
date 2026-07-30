@@ -17,14 +17,20 @@ export type ApplyPaymentResult =
   | { outcome: "rejected"; orderId: string | null; paymentId: string; status: string }
   | { outcome: "unmatched"; paymentId: string; reason: string }
   | { outcome: "amount_mismatch"; orderId: string; paymentId: string }
-  | { outcome: "stock_failed"; orderId: string; paymentId: string };
+  | {
+      outcome: "requires_refund";
+      orderId: string;
+      paymentId: string;
+      productId: string;
+    };
 
 /**
  * Fonte da verdade: GET /v1/payments/{id} → promove AWAITING_PAYMENT → PAID.
  * Idempotente: seguro chamar várias vezes com o mesmo paymentId.
  *
- * Estoque: pedidos com stockReserved=true já reservaram na criação — só promove status.
- * Legado (stockReserved=false): baixa atômica nesta transaction (compat).
+ * Estoque: baixa ATÔMICA nesta transaction no approved (não no create do checkout).
+ * Exceção: pedidos legado com stockReserved=true (já baixaram na criação).
+ * Se a baixa falhar após cobrança: status REQUIRES_REFUND (não deixa estoque negativo).
  */
 export async function applyMercadoPagoPaymentId(
   paymentId: string
@@ -94,7 +100,6 @@ export async function applyMercadoPagoPaymentId(
     order.status === OrderStatus.PAID ||
     order.status === OrderStatus.COMPLETED
   ) {
-    // Já pago — garante paymentId se ainda não tinha.
     if (!order.paymentId) {
       await prisma.order.update({
         where: { id: order.id },
@@ -112,6 +117,26 @@ export async function applyMercadoPagoPaymentId(
     };
   }
 
+  if (order.status === OrderStatus.REQUIRES_REFUND) {
+    // Já marcado — idempotente (pagamento aprovado sem estoque).
+    if (!order.paymentId) {
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          paymentId: payment.id,
+          paymentMethod: payment.paymentMethodId ?? undefined,
+          paidAt: new Date(),
+        },
+      });
+    }
+    return {
+      outcome: "requires_refund",
+      orderId: order.id,
+      paymentId: payment.id,
+      productId: "unknown",
+    };
+  }
+
   if (order.status !== OrderStatus.AWAITING_PAYMENT) {
     return {
       outcome: "unmatched",
@@ -122,7 +147,6 @@ export async function applyMercadoPagoPaymentId(
 
   try {
     await prisma.$transaction(async (tx) => {
-      // Unique em paymentId: se outro pedido já usa este id, falha com P2002.
       const updated = await tx.order.updateMany({
         where: {
           id: order.id,
@@ -140,29 +164,56 @@ export async function applyMercadoPagoPaymentId(
         throw new Error("ORDER_NOT_UPDATED");
       }
 
-      // Reserva já feita no createOnlineOrder — evita cobrado+não-pago por race.
+      // Legado: já baixou no create — não decrementa de novo.
       if (!order.stockReserved) {
         const items = await tx.orderItem.findMany({
           where: { orderId: order.id },
           select: { productId: true, quantity: true },
         });
 
+        // Agrega por produto (mods diferentes = mesmo SKU).
+        const qtyByProduct = new Map<string, number>();
         for (const item of items) {
-          await decrementStockOrThrow(tx, item.productId, item.quantity);
+          qtyByProduct.set(
+            item.productId,
+            (qtyByProduct.get(item.productId) ?? 0) + item.quantity
+          );
+        }
+
+        for (const [productId, quantity] of qtyByProduct) {
+          // updateMany com gte → nunca deixa estoque negativo (race A/B).
+          await decrementStockOrThrow(tx, productId, quantity);
         }
       }
     });
   } catch (error) {
     if (error instanceof InsufficientStockError) {
-      console.error("applyMercadoPagoPaymentId stock_failed", {
+      console.error("applyMercadoPagoPaymentId requires_refund", {
         orderId: order.id,
         paymentId: payment.id,
         productId: error.productId,
       });
+
+      // Transaction de PAID+stock fez rollback. Marca alerta SEM baixar estoque.
+      await prisma.order.updateMany({
+        where: {
+          id: order.id,
+          status: OrderStatus.AWAITING_PAYMENT,
+        },
+        data: {
+          status: OrderStatus.REQUIRES_REFUND,
+          paymentId: payment.id,
+          paymentMethod: payment.paymentMethodId ?? "checkout_pro",
+          paidAt: new Date(),
+          stockReserved: false,
+        },
+      });
+
       return {
-        outcome: "stock_failed",
+        outcome: "requires_refund",
         orderId: order.id,
         paymentId: payment.id,
+        productId: error.productId,
       };
     }
 
@@ -179,6 +230,14 @@ export async function applyMercadoPagoPaymentId(
           outcome: "already_paid",
           orderId: order.id,
           paymentId: payment.id,
+        };
+      }
+      if (refreshed?.status === OrderStatus.REQUIRES_REFUND) {
+        return {
+          outcome: "requires_refund",
+          orderId: order.id,
+          paymentId: payment.id,
+          productId: "unknown",
         };
       }
       return {
