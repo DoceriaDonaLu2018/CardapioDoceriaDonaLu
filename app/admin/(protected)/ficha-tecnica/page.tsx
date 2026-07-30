@@ -4,7 +4,7 @@ import { FichaTecnicaClient } from "./ficha-tecnica-client";
 export const dynamic = "force-dynamic";
 
 export default async function FichaTecnicaPage() {
-  const [products, ingredients, categories] = await Promise.all([
+  const [products, ingredients, baseRecipes, categories] = await Promise.all([
     prisma.product.findMany({
       where: { isDeleted: false },
       orderBy: { title: "asc" },
@@ -25,7 +25,35 @@ export default async function FichaTecnicaPage() {
                 purchasePrice: true,
                 purchaseQuantity: true,
                 unit: true,
+                wastePercent: true,
               },
+            },
+          },
+        },
+        technicalSheet: {
+          select: {
+            desiredMarkupPercent: true,
+            lines: {
+              orderBy: { sortOrder: "asc" },
+              select: {
+                componentType: true,
+                quantityUsed: true,
+                baseRecipeId: true,
+                ingredient: {
+                  select: {
+                    id: true,
+                    name: true,
+                    purchasePrice: true,
+                    purchaseQuantity: true,
+                    unit: true,
+                    wastePercent: true,
+                  },
+                },
+              },
+            },
+            dynamicCosts: {
+              orderBy: { sortOrder: "asc" },
+              select: { name: true, kind: true, value: true },
             },
           },
         },
@@ -39,6 +67,21 @@ export default async function FichaTecnicaPage() {
         purchasePrice: true,
         purchaseQuantity: true,
         unit: true,
+        wastePercent: true,
+      },
+    }),
+    prisma.baseRecipe.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        items: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            componentType: true,
+            ingredientId: true,
+            nestedBaseRecipeId: true,
+            quantityUsed: true,
+          },
+        },
       },
     }),
     prisma.category.findMany({
@@ -54,14 +97,64 @@ export default async function FichaTecnicaPage() {
           Ficha Técnica
         </h1>
         <p className="mt-1 text-stone-500">
-          Engenharia de cardápio: calcule custo, lucro e preço ideal em tempo
-          real.
+          Custo com matérias-primas, receitas base, fator de correção e custos
+          dinâmicos — recalculado com segurança no servidor.
         </p>
       </div>
 
       <FichaTecnicaClient
-        products={products}
+        products={products.map((p) => ({
+          ...p,
+          technicalSheet: p.technicalSheet
+            ? {
+                desiredMarkupPercent: p.technicalSheet.desiredMarkupPercent,
+                dynamicCosts: p.technicalSheet.dynamicCosts,
+                lines: p.technicalSheet.lines
+                  .map((line) => {
+                    if (
+                      line.componentType === "BASE_RECIPE" &&
+                      line.baseRecipeId
+                    ) {
+                      return {
+                        componentType: "BASE_RECIPE" as const,
+                        quantityUsed: line.quantityUsed,
+                        baseRecipeId: line.baseRecipeId,
+                      };
+                    }
+                    if (line.ingredient) {
+                      return {
+                        componentType: "INGREDIENT" as const,
+                        quantityUsed: line.quantityUsed,
+                        ingredient: line.ingredient,
+                      };
+                    }
+                    return null;
+                  })
+                  .filter((l): l is NonNullable<typeof l> => l != null),
+              }
+            : null,
+        }))}
         ingredients={ingredients}
+        baseRecipes={baseRecipes.map((r) => ({
+          id: r.id,
+          name: r.name,
+          yieldQuantity: r.yieldQuantity,
+          yieldUnit: r.yieldUnit,
+          unitCostCache: r.unitCostCache,
+          items: r.items.map((item) =>
+            item.componentType === "BASE_RECIPE" && item.nestedBaseRecipeId
+              ? {
+                  componentType: "BASE_RECIPE" as const,
+                  nestedBaseRecipeId: item.nestedBaseRecipeId,
+                  quantityUsed: item.quantityUsed,
+                }
+              : {
+                  componentType: "INGREDIENT" as const,
+                  ingredientId: item.ingredientId ?? "",
+                  quantityUsed: item.quantityUsed,
+                }
+          ),
+        }))}
         categories={categories}
       />
     </div>

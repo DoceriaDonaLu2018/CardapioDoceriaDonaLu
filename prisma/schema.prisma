@@ -41,6 +41,7 @@ model Product {
   category        Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   orderItems      OrderItem[]
   recipeItems     RecipeItem[]
+  technicalSheet  TechnicalSheet?
   reviews         Review[]
   modifierGroups  ProductModifierGroup[]
   banners         Banner[]
@@ -123,14 +124,136 @@ model Review {
 }
 
 model Ingredient {
-  id               String       @id @default(cuid())
-  name             String       @unique
+  id               String                   @id @default(cuid())
+  name             String                   @unique
   purchasePrice    Float // custo da embalagem fechada
   purchaseQuantity Float // quantidade contida na embalagem
   unit             String // kg | g | mg | L | ml | un
+  /// Fator de Correção / desperdício: % de perda (limpeza, cocção, evaporação).
+  /// 0 = usa 100% do comprado; 20 = só 80% é utilizável → custo real sobe.
+  wastePercent     Float                    @default(0)
   recipeItems      RecipeItem[]
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  baseRecipeItems  BaseRecipeItem[]
+  sheetLines       TechnicalSheetLine[]
+  priceHistory     IngredientPriceHistory[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+}
+
+/// Histórico de preço de matéria-prima — base para alertas de margem.
+model IngredientPriceHistory {
+  id                String     @id @default(cuid())
+  ingredientId      String
+  ingredient        Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  oldPurchasePrice  Float
+  newPurchasePrice  Float
+  oldPurchaseQty    Float?
+  newPurchaseQty    Float?
+  note              String?
+  createdAt         DateTime   @default(now())
+
+  @@index([ingredientId, createdAt])
+  @@map("ingredient_price_history")
+}
+
+/// Sub-receita / produto intermediário (ex.: Massa de Salgado, Recheio de Doce).
+/// Não vende na vitrine — só entra em fichas técnicas e outras bases.
+model BaseRecipe {
+  id            String            @id @default(cuid())
+  name          String            @unique
+  description   String?
+  /// Quantidade produzida pela receita base (ex.: 100 un ou 2 kg).
+  yieldQuantity Float
+  yieldUnit     String // kg | g | L | ml | un
+  /// Custo unitário cacheado após último cálculo (opcional; engine sempre recalcula).
+  unitCostCache Float?
+  totalCostCache Float?
+  items         BaseRecipeItem[]
+  /// Uso desta base em outras bases (sub-composição).
+  usedInItems   BaseRecipeItem[]  @relation("NestedBaseRecipe")
+  sheetLines    TechnicalSheetLine[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@map("base_recipes")
+}
+
+/// Linha de uma sub-receita: matéria-prima OU outra sub-receita (com detecção de ciclo na engine).
+model BaseRecipeItem {
+  id                 String      @id @default(cuid())
+  baseRecipeId       String
+  baseRecipe         BaseRecipe  @relation(fields: [baseRecipeId], references: [id], onDelete: Cascade)
+  /// INGREDIENT | BASE_RECIPE
+  componentType      String      @default("INGREDIENT")
+  ingredientId       String?
+  ingredient         Ingredient? @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  nestedBaseRecipeId String?
+  nestedBaseRecipe   BaseRecipe? @relation("NestedBaseRecipe", fields: [nestedBaseRecipeId], references: [id], onDelete: Restrict)
+  quantityUsed       Float
+  sortOrder          Int         @default(0)
+  createdAt          DateTime    @default(now())
+
+  @@index([baseRecipeId, sortOrder])
+  @@index([ingredientId])
+  @@index([nestedBaseRecipeId])
+  @@map("base_recipe_items")
+}
+
+/// Ficha Técnica 1:1 com o produto de venda (não substitui RecipeItem legado ainda).
+model TechnicalSheet {
+  id                   String               @id @default(cuid())
+  productId            String               @unique
+  product              Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Margem/markup desejado pelo admin (ex.: 150 = 150% sobre o custo).
+  desiredMarkupPercent Float?
+  notes                String?
+  /// Snapshot do último custo total calculado na engine (auditoria).
+  lastTotalCost        Float?
+  lastSuggestedPrice   Float?
+  lines                TechnicalSheetLine[]
+  dynamicCosts         TechnicalSheetCost[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@map("technical_sheets")
+}
+
+/// Linha da ficha: matéria-prima direta OU sub-receita.
+model TechnicalSheetLine {
+  id            String          @id @default(cuid())
+  sheetId       String
+  sheet         TechnicalSheet  @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  /// INGREDIENT | BASE_RECIPE
+  componentType String          @default("INGREDIENT")
+  ingredientId  String?
+  ingredient    Ingredient?     @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  baseRecipeId  String?
+  baseRecipe    BaseRecipe?     @relation(fields: [baseRecipeId], references: [id], onDelete: Restrict)
+  quantityUsed  Float
+  sortOrder     Int             @default(0)
+  createdAt     DateTime        @default(now())
+
+  @@index([sheetId, sortOrder])
+  @@index([ingredientId])
+  @@index([baseRecipeId])
+  @@map("technical_sheet_lines")
+}
+
+/// Custos adicionais dinâmicos nomeados pelo admin (Energia, Taxa Cartão, etc.).
+model TechnicalSheetCost {
+  id        String         @id @default(cuid())
+  sheetId   String
+  sheet     TechnicalSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name      String
+  /// FIXED = R$ | PERCENT = % sobre o preço de venda
+  kind      String         @default("FIXED")
+  value     Float
+  sortOrder Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([sheetId, sortOrder])
+  @@map("technical_sheet_costs")
 }
 
 model RecipeItem {

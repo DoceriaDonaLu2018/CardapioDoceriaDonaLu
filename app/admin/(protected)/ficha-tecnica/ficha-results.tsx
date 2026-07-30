@@ -16,6 +16,7 @@ import {
   buildSimulation,
   type PricingResult,
 } from "@/lib/pricing";
+import type { SheetPricingResult } from "@/lib/ficha-tecnica/engine";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -40,11 +41,39 @@ const alertStyles = {
   },
 } as const;
 
+function toPricingResult(result: SheetPricingResult): PricingResult {
+  const costliest = result.lineCosts.reduce<(typeof result.lineCosts)[number] | null>(
+    (max, item) => (max === null || item.lineCost > max.lineCost ? item : max),
+    null
+  );
+  return {
+    recipeCost: result.recipeCost,
+    additionalFixedCost: result.additionalFixedCost,
+    additionalPercentRate: result.additionalPercentRate,
+    additionalPercentCost: result.additionalPercentCost,
+    packagingCost: 0,
+    totalCost: result.totalCost,
+    sellingPrice: result.sellingPrice,
+    netProfit: result.netProfit,
+    marginPercent: result.marginPercent,
+    markupPercent: result.markupPercent,
+    ingredientCosts: result.lineCosts.map((line) => ({
+      name: line.name,
+      cost: line.lineCost,
+      sharePercent: line.sharePercent,
+    })),
+    costliestIngredient:
+      costliest && costliest.lineCost > 0 ? costliest.name : null,
+    isValid: result.isValid,
+  };
+}
+
 interface FichaResultsProps {
-  result: PricingResult;
+  result: SheetPricingResult;
 }
 
 export function FichaResults({ result }: FichaResultsProps) {
+  const legacy = useMemo(() => toPricingResult(result), [result]);
   const baseCost = result.recipeCost + result.additionalFixedCost;
 
   const simulation = useMemo(
@@ -57,7 +86,7 @@ export function FichaResults({ result }: FichaResultsProps) {
     [result.sellingPrice, result.netProfit]
   );
 
-  const alerts = useMemo(() => buildAlerts(result), [result]);
+  const alerts = useMemo(() => buildAlerts(legacy), [legacy]);
 
   const additionalCostTotal =
     result.additionalFixedCost + result.additionalPercentCost;
@@ -75,16 +104,24 @@ export function FichaResults({ result }: FichaResultsProps) {
 
   return (
     <div className="space-y-4">
-      {/* Preço sugerido em destaque */}
       <Card className="border-coffee-200 bg-coffee-50">
         <CardContent className="flex flex-wrap items-end justify-between gap-4 p-6">
           <div>
             <p className="text-sm font-medium text-coffee-700">
-              Preço de Venda Sugerido
+              Preço de Venda (estratégia)
             </p>
             <p className="mt-1 text-4xl font-bold tracking-tight text-coffee-800">
               {formatPrice(result.sellingPrice)}
             </p>
+            {result.suggestedPriceByDesiredMarkup != null &&
+              result.suggestedPriceByDesiredMarkup > 0 && (
+                <p className="mt-2 text-sm text-coffee-700">
+                  Sugestão pelo markup desejado:{" "}
+                  <strong>
+                    {formatPrice(result.suggestedPriceByDesiredMarkup)}
+                  </strong>
+                </p>
+              )}
           </div>
           <div className="flex gap-6">
             <div className="text-right">
@@ -103,7 +140,6 @@ export function FichaResults({ result }: FichaResultsProps) {
         </CardContent>
       </Card>
 
-      {/* Resumo financeiro */}
       <div className="grid grid-cols-2 gap-3">
         {kpis.map((kpi) => (
           <Card key={kpi.label}>
@@ -111,9 +147,11 @@ export function FichaResults({ result }: FichaResultsProps) {
               <p className="text-xs text-stone-500">{kpi.label}</p>
               <p
                 className={cn(
-                  "mt-1 text-xl font-bold text-stone-800",
-                  "tone" in kpi && kpi.tone === "profit" && "text-green-700",
-                  "tone" in kpi && kpi.tone === "loss" && "text-red-600"
+                  "mt-1 text-lg font-semibold text-stone-800",
+                  "tone" in kpi &&
+                    kpi.tone === "profit" &&
+                    "text-emerald-700",
+                  "tone" in kpi && kpi.tone === "loss" && "text-red-700"
                 )}
               >
                 {kpi.value}
@@ -123,72 +161,65 @@ export function FichaResults({ result }: FichaResultsProps) {
         ))}
       </div>
 
-      {/* Custo por ingrediente */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base text-stone-800">
-            Custo por ingrediente
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {result.ingredientCosts.length === 0 ? (
-            <p className="py-4 text-center text-sm text-stone-400">
-              Adicione ingredientes para ver o rateio de custo.
-            </p>
-          ) : (
+      {alerts.map((alert) => {
+        const style = alertStyles[alert.level];
+        const Icon = style.Icon;
+        return (
+          <div
+            key={alert.message}
+            className={cn(
+              "flex gap-2 rounded-lg border px-3 py-2 text-sm",
+              style.box
+            )}
+          >
+            <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{alert.message}</p>
+          </div>
+        );
+      })}
+
+      {result.lineCosts.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="h-4 w-4" />
+              Breakdown da composição
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ingrediente</TableHead>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead className="text-right">Custo</TableHead>
-                  <TableHead className="text-right">% Receita</TableHead>
+                  <TableHead className="text-right">%</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {result.ingredientCosts.map((item, index) => {
-                  const isCostliest =
-                    item.cost > 0 && item.name === result.costliestIngredient;
-                  return (
-                    <TableRow key={`${item.name}-${index}`}>
-                      <TableCell
-                        className={cn(
-                          "font-medium",
-                          isCostliest ? "text-red-600" : "text-stone-700"
-                        )}
-                      >
-                        {item.name}
-                        {isCostliest && (
-                          <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-600">
-                            + caro
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          "text-right font-semibold",
-                          isCostliest ? "text-red-600" : "text-stone-700"
-                        )}
-                      >
-                        {formatPrice(item.cost)}
-                      </TableCell>
-                      <TableCell className="text-right text-stone-500">
-                        {formatPercent(item.sharePercent)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {result.lineCosts.map((line) => (
+                  <TableRow key={`${line.componentType}-${line.refId}`}>
+                    <TableCell className="font-medium">{line.name}</TableCell>
+                    <TableCell className="text-xs text-stone-500">
+                      {line.componentType === "BASE_RECIPE" ? "Base" : "MP"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatPrice(line.lineCost)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatPercent(line.sharePercent)}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Simulação de marcação */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base text-stone-800">
-            Simulação de preço (marcação sobre custo)
-          </CardTitle>
+          <CardTitle className="text-base">Simulação de markup</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -203,16 +234,14 @@ export function FichaResults({ result }: FichaResultsProps) {
             <TableBody>
               {simulation.map((row) => (
                 <TableRow key={row.markupPercent}>
-                  <TableCell className="font-medium text-stone-700">
-                    {row.markupPercent}%
-                  </TableCell>
-                  <TableCell className="text-right font-semibold text-coffee-700">
+                  <TableCell>{row.markupPercent}%</TableCell>
+                  <TableCell className="text-right">
                     {formatPrice(row.sellingPrice)}
                   </TableCell>
-                  <TableCell className="text-right text-stone-600">
+                  <TableCell className="text-right">
                     {formatPrice(row.netProfit)}
                   </TableCell>
-                  <TableCell className="text-right text-stone-500">
+                  <TableCell className="text-right">
                     {formatPercent(row.marginPercent)}
                   </TableCell>
                 </TableRow>
@@ -222,70 +251,33 @@ export function FichaResults({ result }: FichaResultsProps) {
         </CardContent>
       </Card>
 
-      {/* Projeção de vendas */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-stone-800">
-            <TrendingUp className="h-4 w-4 text-coffee-600" />
-            Projeção de vendas
-          </CardTitle>
+          <CardTitle className="text-base">Projeção de volume</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Unidades</TableHead>
-                <TableHead className="text-right">Faturamento</TableHead>
+                <TableHead className="text-right">Receita</TableHead>
                 <TableHead className="text-right">Lucro</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {projection.map((row) => (
                 <TableRow key={row.units}>
-                  <TableCell className="font-medium text-stone-700">
-                    {row.units}
-                  </TableCell>
-                  <TableCell className="text-right text-stone-600">
+                  <TableCell>{row.units}</TableCell>
+                  <TableCell className="text-right">
                     {formatPrice(row.revenue)}
                   </TableCell>
-                  <TableCell
-                    className={cn(
-                      "text-right font-semibold",
-                      row.profit >= 0 ? "text-green-700" : "text-red-600"
-                    )}
-                  >
+                  <TableCell className="text-right">
                     {formatPrice(row.profit)}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
-
-      {/* Alertas / dicas */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base text-stone-800">
-            Inteligência financeira
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {alerts.map((alert, index) => {
-            const { box, Icon } = alertStyles[alert.level];
-            return (
-              <div
-                key={index}
-                className={cn(
-                  "flex items-start gap-2 rounded-lg border px-3 py-2 text-sm",
-                  box
-                )}
-              >
-                <Icon className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{alert.message}</span>
-              </div>
-            );
-          })}
         </CardContent>
       </Card>
     </div>

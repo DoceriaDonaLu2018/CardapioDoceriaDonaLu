@@ -250,6 +250,93 @@ export const fichaSaveSchema = z.object({
     .max(80),
 });
 
+/** Persistência Enterprise da ficha — totais NÃO são confiados; engine recalcula no server. */
+export const technicalSheetSaveSchema = z.object({
+  productId: idSchema,
+  mode: pricingModeEnum,
+  strategyValue: z.number().finite().min(0).max(1_000_000),
+  desiredMarkupPercent: z
+    .number()
+    .finite()
+    .min(0)
+    .max(10_000)
+    .nullable()
+    .optional(),
+  lines: z
+    .array(
+      z.discriminatedUnion("componentType", [
+        z.object({
+          componentType: z.literal("INGREDIENT"),
+          ingredientId: z
+            .string()
+            .max(64)
+            .optional()
+            .transform((v) => (v && v.length >= 8 ? v : undefined)),
+          name: z.string().transform(stripHtml).pipe(z.string().max(120)),
+          packagePrice: z.number().finite().min(0).max(1_000_000),
+          packageQuantity: z.number().finite().min(0).max(1_000_000),
+          unit: unitEnum,
+          wastePercent: z.number().finite().min(0).max(99.99).default(0),
+          quantityUsed: z.number().finite().min(0).max(1_000_000),
+        }),
+        z.object({
+          componentType: z.literal("BASE_RECIPE"),
+          baseRecipeId: idSchema,
+          quantityUsed: z.number().finite().min(0).max(1_000_000),
+        }),
+      ])
+    )
+    .max(80),
+  dynamicCosts: z
+    .array(
+      z.object({
+        name: z
+          .string()
+          .transform(stripHtml)
+          .pipe(z.string().min(1).max(80)),
+        kind: z.enum(["FIXED", "PERCENT"]),
+        value: z.number().finite().min(0).max(1_000_000),
+      })
+    )
+    .max(40),
+});
+
+export const baseRecipeWriteSchema = z.object({
+  id: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length >= 8 ? v : undefined))
+    .pipe(idSchema.optional()),
+  name: plainText(120, "o nome da receita base"),
+  description: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((v) => {
+      if (v == null || String(v).trim() === "") return null;
+      return stripHtml(String(v)).slice(0, 500);
+    }),
+  yieldQuantity: z.number().finite().min(0.0001).max(1_000_000),
+  yieldUnit: unitEnum,
+  items: z
+    .array(
+      z.discriminatedUnion("componentType", [
+        z.object({
+          componentType: z.literal("INGREDIENT"),
+          ingredientId: idSchema,
+          quantityUsed: z.number().finite().min(0.0001).max(1_000_000),
+        }),
+        z.object({
+          componentType: z.literal("BASE_RECIPE"),
+          nestedBaseRecipeId: idSchema,
+          quantityUsed: z.number().finite().min(0.0001).max(1_000_000),
+        }),
+      ])
+    )
+    .min(1, "Adicione ao menos um item.")
+    .max(80),
+});
+
 /**
  * Pathname do Vercel Blob — rejeita traversal (`..`), URLs absolutas e chars suspeitos.
  * Usado em GET /api/file?pathname=

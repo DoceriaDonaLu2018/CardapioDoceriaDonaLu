@@ -37,6 +37,7 @@ const links = [
   { href: "/admin/cupons", label: "Cupons", icon: TicketPercent },
   { href: "/admin/brindes", label: "Brindes", icon: Gift },
   { href: "/admin/estoque", label: "Estoque", icon: Package },
+  { href: "/admin/receitas-base", label: "Receitas base", icon: CakeSlice },
   { href: "/admin/ficha-tecnica", label: "Ficha Técnica", icon: Calculator },
   { href: "/admin/avaliacoes", label: "Avaliações", icon: Star },
   { href: "/admin/configuracoes", label: "Configurações", icon: Settings },
