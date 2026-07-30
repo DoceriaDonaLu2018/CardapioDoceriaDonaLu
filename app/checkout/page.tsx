@@ -6,6 +6,8 @@ import {
   getSelectablePickupSlots,
   getStoreSettings,
 } from "@/lib/store-settings";
+import { checkStoreStatus } from "@/lib/store-status";
+import { quoteGifts } from "@/lib/pricing/coupons-gifts";
 import { CheckoutForm } from "./checkout-form";
 import { Button } from "@/components/ui/button";
 
@@ -17,9 +19,11 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function CheckoutPage() {
-  const [slots, settings] = await Promise.all([
+  const [slots, settings, storeStatus, giftQuote] = await Promise.all([
     getSelectablePickupSlots(),
     getStoreSettings(),
+    checkStoreStatus({ fulfillmentMode: "pickup" }),
+    quoteGifts(0),
   ]);
 
   return (
@@ -54,6 +58,14 @@ export default async function CheckoutPage() {
               settings.openTime,
               settings.closeTime
             )}
+            storeOpen={storeStatus.isOpen}
+            closedMessage={storeStatus.message}
+            minOrderValue={settings.minOrderValue}
+            gifts={giftQuote.gifts.map((g) => ({
+              id: g.id,
+              name: g.name,
+              minPurchaseValue: g.minPurchaseValue,
+            }))}
           />
         </main>
       </div>

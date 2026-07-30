@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/auth-guard";
 import {
   filterSlotsWithinHours,
   storeSettingsSchema,
+  toOperatingHoursJson,
   type StoreSettingsData,
 } from "@/lib/store-settings";
 
@@ -60,6 +61,10 @@ export async function saveStoreSettings(
     };
   }
 
+  const allowed = [...new Set(parsed.data.allowedPreOrderDays)].sort(
+    (a, b) => a - b
+  );
+
   try {
     await prisma.storeSettings.upsert({
       where: { id: "default" },
@@ -68,11 +73,23 @@ export async function saveStoreSettings(
         openTime: open,
         closeTime: close,
         pickupSlots,
+        minOrderValue: parsed.data.minOrderValue,
+        advanceNoticeDays: parsed.data.advanceNoticeDays,
+        allowedPreOrderDays: allowed,
+        operatingHours: toOperatingHoursJson(
+          parsed.data.operatingHours ?? null
+        ),
       },
       update: {
         openTime: open,
         closeTime: close,
         pickupSlots,
+        minOrderValue: parsed.data.minOrderValue,
+        advanceNoticeDays: parsed.data.advanceNoticeDays,
+        allowedPreOrderDays: allowed,
+        operatingHours: toOperatingHoursJson(
+          parsed.data.operatingHours ?? null
+        ),
       },
     });
     revalidateSettings();

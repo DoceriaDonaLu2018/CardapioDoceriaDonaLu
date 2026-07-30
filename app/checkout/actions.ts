@@ -16,7 +16,13 @@ import {
   mapMercadoPagoError,
 } from "@/lib/payments/mercadopago";
 import { assertMemoryRateLimit } from "@/lib/payments/rate-limit";
-import { getSelectablePickupSlots } from "@/lib/store-settings";
+import { getSelectablePickupSlots, getStoreSettings } from "@/lib/store-settings";
+import { checkStoreStatus } from "@/lib/store-status";
+import { quoteCoupon, quoteGifts } from "@/lib/pricing/coupons-gifts";
+import {
+  decrementStockOrThrow,
+  InsufficientStockError,
+} from "@/lib/inventory/stock";
 import {
   cartModifiersInputSchema,
   validateAndBuildModifierSnapshot,
@@ -70,6 +76,15 @@ const checkoutSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe a data da encomenda.")
       .optional()
       .nullable(),
+    couponCode: z
+      .string()
+      .optional()
+      .nullable()
+      .transform((v) => {
+        if (v == null) return null;
+        const cleaned = stripHtml(v).toUpperCase().slice(0, 40);
+        return cleaned.length > 0 ? cleaned : null;
+      }),
     items: z.array(checkoutItemSchema).min(1).max(40),
   })
   .superRefine((data, ctx) => {
@@ -151,6 +166,7 @@ async function assertRateLimits(phone: string): Promise<ActionErr | null> {
 /**
  * Cria o pedido ONLINE (AWAITING_PAYMENT) SEM chamar o gateway ainda.
  * O pagamento acontece no Checkout Pro do Mercado Pago (redirect).
+ * Reserva estoque atomicamente (stockReserved) para não cobrar sem baixa.
  */
 export async function createOnlineOrder(
   rawInput: unknown
@@ -188,12 +204,18 @@ export async function createOnlineOrder(
 
   const isScheduled = input.fulfillmentMode === "scheduled";
   const deliveryDate = isScheduled ? input.deliveryDate ?? null : null;
-  if (isScheduled && deliveryDate) {
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
-    if (deliveryDate < todayStr) {
-      return { success: false, error: "A data da encomenda não pode ser no passado." };
+
+  // Revalidação de status da loja no instante do submit (fuso Brasília).
+  const storeStatus = await checkStoreStatus({
+    fulfillmentMode: input.fulfillmentMode,
+    deliveryDate,
+  });
+  if (isScheduled) {
+    if (!storeStatus.canCheckoutScheduled) {
+      return { success: false, error: storeStatus.message };
     }
+  } else if (!storeStatus.canCheckoutPickup) {
+    return { success: false, error: storeStatus.message };
   }
 
   const rateError = await assertRateLimits(phone);
@@ -311,12 +333,11 @@ export async function createOnlineOrder(
       quantity: item.quantity,
       priceAtTime,
       costAtTime: product.costPrice,
-      modifiers:
-        validated.snapshot.length > 0 ? validated.snapshot : null,
+      modifiers: validated.snapshot.length > 0 ? validated.snapshot : null,
     });
   }
 
-  const totalAmount =
+  const subtotal =
     Math.round(
       orderItems.reduce(
         (sum, item) => sum + item.priceAtTime * item.quantity,
@@ -324,49 +345,127 @@ export async function createOnlineOrder(
       ) * 100
     ) / 100;
 
+  if (subtotal < 0.01) {
+    return { success: false, error: "O total do pedido é inválido." };
+  }
+
+  const settings = await getStoreSettings();
+  if (settings.minOrderValue > 0 && subtotal < settings.minOrderValue) {
+    return {
+      success: false,
+      error: `Pedido mínimo de R$ ${settings.minOrderValue
+        .toFixed(2)
+        .replace(".", ",")}.`,
+    };
+  }
+
+  let discountAmount = 0;
+  let couponCode: string | null = null;
+  if (input.couponCode) {
+    const couponQuote = await quoteCoupon(input.couponCode, subtotal);
+    if (!couponQuote.ok) {
+      return { success: false, error: couponQuote.error };
+    }
+    discountAmount = couponQuote.discountAmount;
+    couponCode = couponQuote.coupon.code;
+  }
+
+  const giftQuote = await quoteGifts(subtotal);
+  const giftName = giftQuote.selected?.name ?? null;
+
+  const totalAmount =
+    Math.round(Math.max(0, subtotal - discountAmount) * 100) / 100;
+
   if (totalAmount < 0.01) {
     return { success: false, error: "O total do pedido é inválido." };
   }
 
   const accessToken = createPaymentAccessToken();
 
-  const order = await prisma.order.create({
-    data: {
-      customerName: input.customerName.trim(),
-      customerPhone: phone,
-      customerEmail: input.customerEmail.trim().toLowerCase(),
-      deliveryAddress: PICKUP_FULFILLMENT_LABEL,
-      deliveryNotes: input.deliveryNotes?.trim() || null,
-      pickupTime: input.pickupTime,
-      deliveryDate,
-      status: OrderStatus.AWAITING_PAYMENT,
-      source: OrderSource.ONLINE,
-      totalAmount,
-      advancePayment: 0,
-      paymentProvider: "mercadopago",
-      paymentAccessToken: accessToken,
-      items: {
-        create: orderItems.map((item) => ({
-          productId: item.productId,
-          productTitle: item.productTitle,
-          quantity: item.quantity,
-          priceAtTime: item.priceAtTime,
-          costAtTime: item.costAtTime,
-          modifiers:
-            item.modifiers === null
-              ? Prisma.JsonNull
-              : (item.modifiers as Prisma.InputJsonValue),
-        })),
-      },
-    },
-    select: { id: true },
-  });
+  let order: { id: string };
+  try {
+    order = await prisma.$transaction(async (tx) => {
+      // Reserva atômica — evita oversell e paga-sem-estoque no webhook.
+      for (const [productId, qty] of qtyByProduct) {
+        await decrementStockOrThrow(tx, productId, qty);
+      }
+
+      return tx.order.create({
+        data: {
+          customerName: input.customerName.trim(),
+          customerPhone: phone,
+          customerEmail: input.customerEmail.trim().toLowerCase(),
+          deliveryAddress: PICKUP_FULFILLMENT_LABEL,
+          deliveryNotes: input.deliveryNotes?.trim() || null,
+          pickupTime: input.pickupTime,
+          deliveryDate,
+          status: OrderStatus.AWAITING_PAYMENT,
+          source: OrderSource.ONLINE,
+          totalAmount,
+          discountAmount,
+          couponCode,
+          giftName,
+          advancePayment: 0,
+          paymentProvider: "mercadopago",
+          paymentAccessToken: accessToken,
+          stockReserved: true,
+          items: {
+            create: orderItems.map((item) => ({
+              productId: item.productId,
+              productTitle: item.productTitle,
+              quantity: item.quantity,
+              priceAtTime: item.priceAtTime,
+              costAtTime: item.costAtTime,
+              modifiers:
+                item.modifiers === null
+                  ? Prisma.JsonNull
+                  : (item.modifiers as Prisma.InputJsonValue),
+            })),
+          },
+        },
+        select: { id: true },
+      });
+    });
+  } catch (error) {
+    if (error instanceof InsufficientStockError) {
+      return {
+        success: false,
+        error:
+          "Estoque insuficiente para um ou mais itens. Atualize o carrinho e tente de novo.",
+      };
+    }
+    throw error;
+  }
 
   return {
     success: true,
     orderId: order.id,
     accessToken,
     totalAmount,
+  };
+}
+
+/** Preview de cupom no checkout (subtotal deve vir recalculável; aqui só valida código + mínimo). */
+export async function previewCoupon(
+  raw: unknown
+): Promise<
+  | { success: true; discountAmount: number; code: string }
+  | { success: false; error: string }
+> {
+  const schema = z.object({
+    code: z.string().min(1).max(40),
+    subtotal: z.number().finite().min(0).max(1_000_000),
+  });
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    return { success: false, error: "Cupom inválido." };
+  }
+  const quote = await quoteCoupon(parsed.data.code, parsed.data.subtotal);
+  if (!quote.ok) return { success: false, error: quote.error };
+  return {
+    success: true,
+    discountAmount: quote.discountAmount,
+    code: quote.coupon.code,
   };
 }
 
@@ -398,6 +497,8 @@ export async function startCheckoutProPayment(
       customerName: true,
       customerEmail: true,
       paymentAccessToken: true,
+      totalAmount: true,
+      discountAmount: true,
       items: {
         select: {
           productId: true,
@@ -417,6 +518,34 @@ export async function startCheckoutProPayment(
     return { success: false, error: "Pedido sem itens." };
   }
 
+  const subtotal = order.items.reduce(
+    (sum, item) => sum + item.priceAtTime * item.quantity,
+    0
+  );
+  // Distribui desconto proporcional nos itens para o total do MP bater com o pedido.
+  const targetTotal = order.totalAmount;
+  const factor =
+    subtotal > 0 && order.discountAmount > 0 ? targetTotal / subtotal : 1;
+  let running = 0;
+  const mpItems = order.items.map((item, index) => {
+    const isLast = index === order.items.length - 1;
+    let unitPrice =
+      Math.round(item.priceAtTime * factor * 100) / 100;
+    if (isLast && order.items.length > 0) {
+      const previous = running;
+      const lineTotal = Math.round((targetTotal - previous) * 100) / 100;
+      unitPrice =
+        Math.round((lineTotal / item.quantity) * 100) / 100;
+    }
+    running += unitPrice * item.quantity;
+    return {
+      id: item.productId,
+      title: item.productTitle,
+      quantity: item.quantity,
+      unitPrice: Math.max(0.01, unitPrice),
+    };
+  });
+
   try {
     const preference = await createCheckoutProPreference({
       orderId: order.id,
@@ -424,12 +553,7 @@ export async function startCheckoutProPayment(
       payerEmail: order.customerEmail || "cliente@doceriadonalu.com",
       payerName: order.customerName,
       paymentChoice,
-      items: order.items.map((item) => ({
-        id: item.productId,
-        title: item.productTitle,
-        quantity: item.quantity,
-        unitPrice: item.priceAtTime,
-      })),
+      items: mpItems,
     });
 
     await prisma.order.update({

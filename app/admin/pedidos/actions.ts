@@ -254,6 +254,7 @@ export async function cancelOrder(orderId: string): Promise<OrderActionState> {
       where: { id: parsedId.data },
       select: {
         status: true,
+        stockReserved: true,
         items: { select: { productId: true, quantity: true } },
       },
     });
@@ -262,9 +263,12 @@ export async function cancelOrder(orderId: string): Promise<OrderActionState> {
       return { error: "Pedidos concluídos não podem ser cancelados por aqui." };
     }
 
-    // Estoque só foi baixado em PENDING (PDV) ou PAID (online).
+    // PENDING (PDV), PAID (online) ou AWAITING com reserva — devolve estoque.
+    // AWAITING legado (stockReserved=false) NÃO incrementa (nunca baixou).
     const shouldRestore =
-      existing.status === "PENDING" || existing.status === "PAID";
+      existing.status === "PENDING" ||
+      existing.status === "PAID" ||
+      (existing.status === "AWAITING_PAYMENT" && existing.stockReserved);
 
     await prisma.$transaction(async (tx) => {
       if (shouldRestore) {
@@ -274,7 +278,7 @@ export async function cancelOrder(orderId: string): Promise<OrderActionState> {
       }
       await tx.order.update({
         where: { id: parsedId.data },
-        data: { status: "CANCELED" },
+        data: { status: "CANCELED", stockReserved: false },
       });
     });
 

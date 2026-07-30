@@ -17,6 +17,8 @@ export default async function BannersPage() {
         productId: true,
         isActive: true,
         order: true,
+        startDate: true,
+        endDate: true,
         product: { select: { title: true } },
       },
     }),
@@ -59,6 +61,8 @@ export default async function BannersPage() {
           productTitle: banner.product?.title ?? null,
           isActive: banner.isActive,
           order: banner.order,
+          startDate: banner.startDate?.toISOString() ?? null,
+          endDate: banner.endDate?.toISOString() ?? null,
         }))}
       />
     </div>

@@ -22,7 +22,9 @@ export type ApplyPaymentResult =
 /**
  * Fonte da verdade: GET /v1/payments/{id} → promove AWAITING_PAYMENT → PAID.
  * Idempotente: seguro chamar várias vezes com o mesmo paymentId.
- * Baixa de estoque atômica na mesma transaction (evita race / oversell).
+ *
+ * Estoque: pedidos com stockReserved=true já reservaram na criação — só promove status.
+ * Legado (stockReserved=false): baixa atômica nesta transaction (compat).
  */
 export async function applyMercadoPagoPaymentId(
   paymentId: string
@@ -62,6 +64,7 @@ export async function applyMercadoPagoPaymentId(
       status: true,
       totalAmount: true,
       paymentId: true,
+      stockReserved: true,
     },
   });
 
@@ -91,7 +94,7 @@ export async function applyMercadoPagoPaymentId(
     order.status === OrderStatus.PAID ||
     order.status === OrderStatus.COMPLETED
   ) {
-    // Já pago — garante paymentId se ainda não tinha. Estoque já foi baixado.
+    // Já pago — garante paymentId se ainda não tinha.
     if (!order.paymentId) {
       await prisma.order.update({
         where: { id: order.id },
@@ -137,13 +140,16 @@ export async function applyMercadoPagoPaymentId(
         throw new Error("ORDER_NOT_UPDATED");
       }
 
-      const items = await tx.orderItem.findMany({
-        where: { orderId: order.id },
-        select: { productId: true, quantity: true },
-      });
+      // Reserva já feita no createOnlineOrder — evita cobrado+não-pago por race.
+      if (!order.stockReserved) {
+        const items = await tx.orderItem.findMany({
+          where: { orderId: order.id },
+          select: { productId: true, quantity: true },
+        });
 
-      for (const item of items) {
-        await decrementStockOrThrow(tx, item.productId, item.quantity);
+        for (const item of items) {
+          await decrementStockOrThrow(tx, item.productId, item.quantity);
+        }
       }
     });
   } catch (error) {

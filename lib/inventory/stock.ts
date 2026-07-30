@@ -36,7 +36,11 @@ export async function decrementStockOrThrow(
   }
 }
 
-/** Devolve unidades ao estoque (ex.: reedição de pedido PDV). */
+/**
+ * Devolve unidades ao estoque (cancelamento / reedição PDV).
+ * Inclui produtos soft-deleted: o histórico do pedido ainda precisa
+ * repor quantidade; o item continua Restrict e invisível no cardápio.
+ */
 export async function incrementStock(
   tx: TxClient,
   productId: string,
@@ -45,7 +49,7 @@ export async function incrementStock(
   if (quantity <= 0) return;
 
   await tx.product.updateMany({
-    where: { id: productId, isDeleted: false },
+    where: { id: productId },
     data: { stockQuantity: { increment: quantity } },
   });
 }

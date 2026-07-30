@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { parseDatetimeLocalAsBrasilia } from "@/lib/timezone";
+
 /**
  * Camada AppSec compartilhada — validação/sanitização de entradas.
  *
@@ -125,12 +127,67 @@ export const bannerWriteSchema = z.object({
     .pipe(idSchema.nullable()),
   isActive: z.boolean(),
   order: z.coerce.number().int().min(0).max(9999).default(0),
+  startDate: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((v) => parseDatetimeLocalAsBrasilia(v)),
+  endDate: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((v) => parseDatetimeLocalAsBrasilia(v)),
 });
 
-export const reorderIdsSchema = z
-  .array(idSchema)
-  .min(1)
-  .max(200);
+export const reorderIdsSchema = z.array(idSchema).min(1).max(200);
+
+export const couponWriteSchema = z
+  .object({
+    id: z
+      .string()
+      .optional()
+      .transform((v) => (v && v.length >= 8 ? v : undefined))
+      .pipe(idSchema.optional()),
+    code: z
+      .string()
+      .transform((v) => stripHtml(v).toUpperCase())
+      .pipe(
+        z
+          .string()
+          .min(2, "Informe o código.")
+          .max(40)
+          .regex(/^[A-Z0-9_-]+$/, "Use apenas letras, números, _ ou -.")
+      ),
+    discountType: z.enum(["PERCENTAGE", "FIXED"]),
+    value: z.number().finite().min(0).max(1_000_000),
+    minPurchaseValue: z.number().finite().min(0).max(1_000_000),
+    isActive: z.boolean(),
+    expiresAt: z
+      .string()
+      .optional()
+      .nullable()
+      .transform((v) => parseDatetimeLocalAsBrasilia(v)),
+  })
+  .superRefine((data, ctx) => {
+    if (data.discountType === "PERCENTAGE" && data.value > 100) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Percentual máximo é 100.",
+        path: ["value"],
+      });
+    }
+  });
+
+export const giftWriteSchema = z.object({
+  id: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length >= 8 ? v : undefined))
+    .pipe(idSchema.optional()),
+  name: plainText(120, "o nome do brinde"),
+  minPurchaseValue: z.number().finite().min(0).max(1_000_000),
+  isActive: z.boolean(),
+});
 
 export const pdvOrderItemSchema = z.object({
   productId: idSchema,

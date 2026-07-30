@@ -52,7 +52,13 @@ export default async function Home() {
     }),
     getHighlightedReviews(3),
     prisma.banner.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        AND: [
+          { OR: [{ startDate: null }, { startDate: { lte: new Date() } }] },
+          { OR: [{ endDate: null }, { endDate: { gt: new Date() } }] },
+        ],
+      },
       orderBy: { order: "asc" },
       select: {
         id: true,

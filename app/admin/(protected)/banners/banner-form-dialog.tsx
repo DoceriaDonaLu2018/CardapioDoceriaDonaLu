@@ -10,6 +10,7 @@ import {
 } from "@/app/admin/banners/actions";
 import { ImageUpload } from "@/components/admin/image-upload";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -29,6 +30,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { toDatetimeLocalBrasilia } from "@/lib/timezone";
+
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  return toDatetimeLocalBrasilia(iso);
+}
+
 export type BannerFormProduct = {
   id: string;
   title: string;
@@ -39,6 +46,8 @@ export type BannerFormValues = {
   imageUrl: string;
   productId: string | null;
   isActive: boolean;
+  startDate: string | null;
+  endDate: string | null;
 };
 
 interface BannerFormDialogProps {
@@ -116,11 +125,32 @@ export function BannerFormDialog({
             </Select>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="startDate">Início (opcional)</Label>
+              <Input
+                id="startDate"
+                name="startDate"
+                type="datetime-local"
+                defaultValue={toDatetimeLocalValue(banner?.startDate)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="endDate">Fim (opcional)</Label>
+              <Input
+                id="endDate"
+                name="endDate"
+                type="datetime-local"
+                defaultValue={toDatetimeLocalValue(banner?.endDate)}
+              />
+            </div>
+          </div>
+
           <div className="flex items-center justify-between rounded-lg border border-stone-200 p-3">
             <div>
               <Label htmlFor="isActive">Ativo na vitrine</Label>
               <p className="text-xs text-stone-500">
-                Banners inativos não aparecem no site.
+                Mesmo ativo, só aparece dentro da janela de datas.
               </p>
             </div>
             <Switch

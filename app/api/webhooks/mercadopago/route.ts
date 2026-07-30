@@ -158,7 +158,7 @@ async function processPaymentId(paymentId: string): Promise<{
       return { ok: true, result: "unmatched" };
     }
     case "stock_failed": {
-      // Rollback mantém AWAITING_PAYMENT — retentar após repor estoque.
+      // Só ocorre em pedidos LEGADOS (sem stockReserved). Retentar após repor estoque.
       console.error("webhook stock_failed — pedido NÃO promovido", outcome);
       return {
         ok: false,

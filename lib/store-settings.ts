@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import {
@@ -9,6 +10,17 @@ import {
 export const TIME_HHMM = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Horário inválido (use HH:mm).");
+
+export const dayOperatingHoursSchema = z.object({
+  closed: z.boolean(),
+  open: TIME_HHMM,
+  close: TIME_HHMM,
+});
+
+export type DayOperatingHours = z.infer<typeof dayOperatingHoursSchema>;
+
+/** Mapa 0–6 (dom–sáb) → horário do dia. */
+export type OperatingHoursMap = Record<string, DayOperatingHours>;
 
 export const storeSettingsSchema = z.object({
   openTime: TIME_HHMM,
@@ -25,18 +37,37 @@ export const storeSettingsSchema = z.object({
         });
       }
     }),
+  minOrderValue: z.number().finite().min(0).max(1_000_000).default(0),
+  advanceNoticeDays: z.number().int().min(0).max(60).default(0),
+  allowedPreOrderDays: z
+    .array(z.number().int().min(0).max(6))
+    .min(0)
+    .max(7)
+    .default([1, 2, 3, 4, 5, 6]),
+  operatingHours: z
+    .record(z.string(), dayOperatingHoursSchema)
+    .optional()
+    .nullable(),
 });
 
 export type StoreSettingsData = {
   openTime: string;
   closeTime: string;
   pickupSlots: string[];
+  minOrderValue: number;
+  advanceNoticeDays: number;
+  allowedPreOrderDays: number[];
+  operatingHours: OperatingHoursMap | null;
 };
 
 const DEFAULTS: StoreSettingsData = {
   openTime: "12:00",
   closeTime: "18:00",
   pickupSlots: ["12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"],
+  minOrderValue: 0,
+  advanceNoticeDays: 0,
+  allowedPreOrderDays: [1, 2, 3, 4, 5, 6],
+  operatingHours: null,
 };
 
 function timeToMinutes(value: string): number {
@@ -60,11 +91,18 @@ export function filterSlotsWithinHours(
     .sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
 }
 
+function parseOperatingHours(value: unknown): OperatingHoursMap | null {
+  if (value == null) return null;
+  const parsed = z
+    .record(z.string(), dayOperatingHoursSchema)
+    .safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 export async function getStoreSettings(): Promise<StoreSettingsData> {
   try {
     const row = await prisma.storeSettings.findUnique({
       where: { id: "default" },
-      select: { openTime: true, closeTime: true, pickupSlots: true },
     });
     if (!row) return DEFAULTS;
     return {
@@ -72,6 +110,13 @@ export async function getStoreSettings(): Promise<StoreSettingsData> {
       closeTime: row.closeTime || DEFAULTS.closeTime,
       pickupSlots:
         row.pickupSlots.length > 0 ? row.pickupSlots : DEFAULTS.pickupSlots,
+      minOrderValue: row.minOrderValue ?? DEFAULTS.minOrderValue,
+      advanceNoticeDays: row.advanceNoticeDays ?? DEFAULTS.advanceNoticeDays,
+      allowedPreOrderDays:
+        row.allowedPreOrderDays?.length > 0
+          ? row.allowedPreOrderDays
+          : DEFAULTS.allowedPreOrderDays,
+      operatingHours: parseOperatingHours(row.operatingHours),
     };
   } catch (error) {
     console.error("getStoreSettings:", error);
@@ -99,3 +144,12 @@ export function storeHoursLabelOrFallback(
   if (openTime && closeTime) return formatStoreHoursLabel(openTime, closeTime);
   return FALLBACK_HOURS_LABEL || `Horário de Funcionamento: ${STORE_HOURS}`;
 }
+
+export function toOperatingHoursJson(
+  value: OperatingHoursMap | null | undefined
+): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  if (!value) return Prisma.JsonNull;
+  return value as Prisma.InputJsonValue;
+}
+
+export { DEFAULTS as STORE_SETTINGS_DEFAULTS };

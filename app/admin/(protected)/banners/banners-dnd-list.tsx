@@ -42,6 +42,8 @@ export type BannerListItem = {
   productTitle: string | null;
   isActive: boolean;
   order: number;
+  startDate: string | null;
+  endDate: string | null;
 };
 
 export function BannersDndList({
@@ -229,6 +231,8 @@ function SortableBannerRow({
             imageUrl: banner.imageUrl,
             productId: banner.productId,
             isActive: banner.isActive,
+            startDate: banner.startDate,
+            endDate: banner.endDate,
           }}
           products={products}
           trigger={

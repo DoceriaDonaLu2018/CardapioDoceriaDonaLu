@@ -31,12 +31,22 @@ export async function createBanner(
     productId: String(formData.get("productId") ?? ""),
     isActive: formData.get("isActive") === "on",
     order: 0,
+    startDate: String(formData.get("startDate") ?? "") || null,
+    endDate: String(formData.get("endDate") ?? "") || null,
   });
 
   if (!parsed.success) {
     return {
       error: parsed.error.issues[0]?.message ?? "Dados do banner inválidos.",
     };
+  }
+
+  if (
+    parsed.data.startDate &&
+    parsed.data.endDate &&
+    parsed.data.startDate > parsed.data.endDate
+  ) {
+    return { error: "A data inicial não pode ser depois da final." };
   }
 
   if (parsed.data.productId) {
@@ -60,6 +70,8 @@ export async function createBanner(
         productId: parsed.data.productId,
         isActive: parsed.data.isActive,
         order: nextOrder,
+        startDate: parsed.data.startDate,
+        endDate: parsed.data.endDate,
       },
     });
   } catch {
@@ -82,6 +94,8 @@ export async function updateBanner(
     productId: String(formData.get("productId") ?? ""),
     isActive: formData.get("isActive") === "on",
     order: formData.get("order") ?? 0,
+    startDate: String(formData.get("startDate") ?? "") || null,
+    endDate: String(formData.get("endDate") ?? "") || null,
   });
 
   if (!parsed.success || !parsed.data.id) {
@@ -90,6 +104,14 @@ export async function updateBanner(
         ? "Banner inválido."
         : (parsed.error.issues[0]?.message ?? "Dados do banner inválidos."),
     };
+  }
+
+  if (
+    parsed.data.startDate &&
+    parsed.data.endDate &&
+    parsed.data.startDate > parsed.data.endDate
+  ) {
+    return { error: "A data inicial não pode ser depois da final." };
   }
 
   if (parsed.data.productId) {
@@ -110,6 +132,8 @@ export async function updateBanner(
         imageUrl: parsed.data.imageUrl,
         productId: parsed.data.productId,
         isActive: parsed.data.isActive,
+        startDate: parsed.data.startDate,
+        endDate: parsed.data.endDate,
       },
     });
   } catch {

@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { MapPin, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 
+import { getCartStoreStatus } from "@/app/checkout/store-status-action";
 import { useCart } from "@/components/cart/cart-context";
 import { formatPrice } from "@/lib/format";
 import { formatModifiersLines } from "@/lib/modifiers/types";
@@ -21,6 +23,15 @@ import {
 
 export function CartButton() {
   const { items, itemCount, total, setQuantity, removeItem } = useCart();
+  const [storeOpen, setStoreOpen] = useState(true);
+  const [closedMessage, setClosedMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getCartStoreStatus().then((status) => {
+      setStoreOpen(status.isOpen);
+      setClosedMessage(status.isOpen ? null : status.message);
+    });
+  }, []);
 
   return (
     <Sheet>
@@ -153,6 +164,11 @@ export function CartButton() {
         </div>
 
         <SheetFooter className="mt-4 border-t border-stone-100 pt-4 sm:flex-col">
+          {!storeOpen && closedMessage && items.length > 0 && (
+            <p className="mb-3 w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {closedMessage} No checkout você pode fazer uma encomenda.
+            </p>
+          )}
           <div className="mb-3 flex w-full items-center justify-between text-base">
             <span className="text-stone-500">Total</span>
             <span className="font-bold text-stone-800">

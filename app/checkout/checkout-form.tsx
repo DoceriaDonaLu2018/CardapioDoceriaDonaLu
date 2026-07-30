@@ -6,11 +6,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Lock, MapPin } from "lucide-react";
 
-import { createOnlineOrder } from "@/app/checkout/actions";
+import { createOnlineOrder, previewCoupon } from "@/app/checkout/actions";
 import { useCart } from "@/components/cart/cart-context";
 import { formatPhone, formatPrice } from "@/lib/format";
 import { formatModifiersLines } from "@/lib/modifiers/types";
 import { STORE_ADDRESS } from "@/lib/store-info";
+import { getBrasiliaDateString } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,12 +27,26 @@ import {
 
 type FulfillmentMode = "pickup" | "scheduled";
 
+type GiftOption = {
+  id: string;
+  name: string;
+  minPurchaseValue: number;
+};
+
 export function CheckoutForm({
   pickupSlots,
   hoursLabel,
+  storeOpen,
+  closedMessage,
+  minOrderValue,
+  gifts,
 }: {
   pickupSlots: string[];
   hoursLabel: string;
+  storeOpen: boolean;
+  closedMessage: string;
+  minOrderValue: number;
+  gifts: GiftOption[];
 }) {
   const router = useRouter();
   const { items, total, clear } = useCart();
@@ -42,16 +57,36 @@ export function CheckoutForm({
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
-  const [fulfillmentMode, setFulfillmentMode] =
-    useState<FulfillmentMode>("pickup");
+  const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>(
+    storeOpen ? "pickup" : "scheduled"
+  );
   const [pickupTime, setPickupTime] = useState(pickupSlots[0] ?? "");
   const [deliveryDate, setDeliveryDate] = useState("");
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountAmount: number;
+  } | null>(null);
+  const [couponMsg, setCouponMsg] = useState<string | null>(null);
 
-  const minDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const minDate = useMemo(() => getBrasiliaDateString(), []);
+
+  const unlockedGifts = useMemo(
+    () => gifts.filter((g) => total >= g.minPurchaseValue),
+    [gifts, total]
+  );
+
+  const discount = appliedCoupon?.discountAmount ?? 0;
+  const payable = Math.max(0, Math.round((total - discount) * 100) / 100);
+
+  const belowMinimum = minOrderValue > 0 && total < minOrderValue;
+  const pickupBlocked = fulfillmentMode === "pickup" && !storeOpen;
 
   const canSubmit = useMemo(() => {
     if (items.length === 0 || isPending || !pickupTime) return false;
     if (fulfillmentMode === "scheduled" && !deliveryDate) return false;
+    if (pickupBlocked) return false;
+    if (belowMinimum) return false;
     return true;
   }, [
     items.length,
@@ -59,7 +94,29 @@ export function CheckoutForm({
     pickupTime,
     fulfillmentMode,
     deliveryDate,
+    pickupBlocked,
+    belowMinimum,
   ]);
+
+  function applyCoupon() {
+    setCouponMsg(null);
+    startTransition(async () => {
+      const result = await previewCoupon({
+        code: couponInput,
+        subtotal: total,
+      });
+      if (!result.success) {
+        setAppliedCoupon(null);
+        setCouponMsg(result.error);
+        return;
+      }
+      setAppliedCoupon({
+        code: result.code,
+        discountAmount: result.discountAmount,
+      });
+      setCouponMsg(`Cupom ${result.code} aplicado.`);
+    });
+  }
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -76,6 +133,7 @@ export function CheckoutForm({
         pickupTime,
         deliveryDate:
           fulfillmentMode === "scheduled" ? deliveryDate : undefined,
+        couponCode: appliedCoupon?.code ?? (couponInput.trim() || null),
         items: items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
@@ -157,24 +215,42 @@ export function CheckoutForm({
           </div>
         </div>
 
+        {!storeOpen && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {closedMessage} Você pode fazer uma <strong>encomenda</strong> para
+            outra data.
+          </p>
+        )}
+
+        {belowMinimum && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Pedido mínimo: {formatPrice(minOrderValue)}. Faltam{" "}
+            {formatPrice(minOrderValue - total)}.
+          </p>
+        )}
+
         <div className="space-y-3">
           <Label>Tipo do pedido</Label>
           <div className="grid gap-2 sm:grid-cols-2">
             <button
               type="button"
+              disabled={!storeOpen}
               onClick={() => setFulfillmentMode("pickup")}
               className={cn(
                 "rounded-xl border px-3 py-3 text-left text-sm transition",
                 fulfillmentMode === "pickup"
                   ? "border-coffee-600 bg-coffee-50 ring-1 ring-coffee-600"
-                  : "border-stone-200 bg-white hover:border-stone-300"
+                  : "border-stone-200 bg-white hover:border-stone-300",
+                !storeOpen && "cursor-not-allowed opacity-50"
               )}
             >
               <span className="block font-semibold text-stone-800">
                 Retirada
               </span>
               <span className="mt-0.5 block text-stone-500">
-                Escolha o horário para buscar hoje.
+                {storeOpen
+                  ? "Escolha o horário para buscar hoje."
+                  : "Indisponível — loja fechada agora."}
               </span>
             </button>
             <button
@@ -322,6 +398,68 @@ export function CheckoutForm({
           })}
         </ul>
 
+        <div className="space-y-2 border-t border-stone-100 pt-3">
+          <Label htmlFor="coupon">Cupom</Label>
+          <div className="flex gap-2">
+            <Input
+              id="coupon"
+              value={couponInput}
+              onChange={(e) => {
+                setCouponInput(e.target.value.toUpperCase());
+                setAppliedCoupon(null);
+                setCouponMsg(null);
+              }}
+              placeholder="DONALU10"
+              className="uppercase"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending || !couponInput.trim()}
+              onClick={applyCoupon}
+            >
+              Aplicar
+            </Button>
+          </div>
+          {couponMsg && (
+            <p
+              className={cn(
+                "text-xs",
+                appliedCoupon ? "text-emerald-700" : "text-red-600"
+              )}
+            >
+              {couponMsg}
+            </p>
+          )}
+        </div>
+
+        {gifts.length > 0 && (
+          <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2 text-sm">
+            <p className="font-medium text-stone-700">Brindes</p>
+            <ul className="mt-1 space-y-1 text-xs text-stone-500">
+              {gifts.map((gift) => {
+                const unlocked = total >= gift.minPurchaseValue;
+                return (
+                  <li key={gift.id}>
+                    {unlocked ? "✓" : "○"} {gift.name} — a partir de{" "}
+                    {formatPrice(gift.minPurchaseValue)}
+                  </li>
+                );
+              })}
+            </ul>
+            {unlockedGifts.length > 0 && (
+              <p className="mt-2 text-xs font-medium text-emerald-700">
+                Brinde incluso:{" "}
+                {
+                  unlockedGifts.reduce((best, g) =>
+                    g.minPurchaseValue >= best.minPurchaseValue ? g : best
+                  ).name
+                }
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="space-y-1 border-t border-stone-100 pt-3 text-sm">
           <div className="flex justify-between gap-2">
             <span className="text-stone-500">Modalidade</span>
@@ -343,14 +481,32 @@ export function CheckoutForm({
               <span className="font-medium text-stone-800">{pickupTime}</span>
             </div>
           )}
+          <div className="flex justify-between gap-2">
+            <span className="text-stone-500">Subtotal</span>
+            <span className="font-medium text-stone-800">
+              {formatPrice(total)}
+            </span>
+          </div>
+          {discount > 0 && (
+            <div className="flex justify-between gap-2 text-emerald-700">
+              <span>Desconto ({appliedCoupon?.code})</span>
+              <span>-{formatPrice(discount)}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between border-t border-stone-100 pt-3">
           <span className="text-stone-500">Total</span>
           <span className="text-xl font-bold text-stone-800">
-            {formatPrice(total)}
+            {formatPrice(payable)}
           </span>
         </div>
+
+        {pickupBlocked && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {closedMessage}
+          </p>
+        )}
 
         {error && (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">

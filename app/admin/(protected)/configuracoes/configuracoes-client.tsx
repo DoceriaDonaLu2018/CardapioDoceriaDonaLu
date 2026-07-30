@@ -36,11 +36,30 @@ export function ConfiguracoesClient({
     [...initial.pickupSlots].sort()
   );
   const [customSlot, setCustomSlot] = useState("");
+  const [minOrderValue, setMinOrderValue] = useState(
+    String(initial.minOrderValue ?? 0)
+  );
+  const [advanceNoticeDays, setAdvanceNoticeDays] = useState(
+    String(initial.advanceNoticeDays ?? 0)
+  );
+  const [allowedDays, setAllowedDays] = useState<number[]>(
+    initial.allowedPreOrderDays ?? [1, 2, 3, 4, 5, 6]
+  );
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const slotSet = useMemo(() => new Set(slots), [slots]);
+
+  const WEEKDAYS = [
+    { id: 0, label: "Dom" },
+    { id: 1, label: "Seg" },
+    { id: 2, label: "Ter" },
+    { id: 3, label: "Qua" },
+    { id: 4, label: "Qui" },
+    { id: 5, label: "Sex" },
+    { id: 6, label: "Sáb" },
+  ];
 
   function toggleSuggested(slot: string) {
     setSlots((current) => {
@@ -75,6 +94,10 @@ export function ConfiguracoesClient({
         openTime,
         closeTime,
         pickupSlots: slots,
+        minOrderValue: Number(minOrderValue.replace(",", ".")),
+        advanceNoticeDays: Number(advanceNoticeDays),
+        allowedPreOrderDays: allowedDays,
+        operatingHours: null,
       });
       if (result.error) {
         setError(result.error);
@@ -220,6 +243,79 @@ export function ConfiguracoesClient({
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-stone-200 bg-white p-5">
+        <div>
+          <h2 className="font-serif text-lg font-bold text-stone-800">
+            Pedido mínimo e encomendas
+          </h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Regras validadas no servidor no momento do checkout.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="minOrderValue">Pedido mínimo (R$)</Label>
+            <Input
+              id="minOrderValue"
+              inputMode="decimal"
+              value={minOrderValue}
+              onChange={(e) => {
+                setMinOrderValue(e.target.value);
+                setSaved(false);
+              }}
+              disabled={isPending}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="advanceNoticeDays">
+              Antecedência mínima (dias)
+            </Label>
+            <Input
+              id="advanceNoticeDays"
+              type="number"
+              min={0}
+              max={60}
+              value={advanceNoticeDays}
+              onChange={(e) => {
+                setAdvanceNoticeDays(e.target.value);
+                setSaved(false);
+              }}
+              disabled={isPending}
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Dias liberados para encomenda</Label>
+          <div className="flex flex-wrap gap-2">
+            {WEEKDAYS.map((day) => {
+              const active = allowedDays.includes(day.id);
+              return (
+                <button
+                  key={day.id}
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => {
+                    setAllowedDays((current) =>
+                      current.includes(day.id)
+                        ? current.filter((d) => d !== day.id)
+                        : [...current, day.id].sort((a, b) => a - b)
+                    );
+                    setSaved(false);
+                  }}
+                  className={
+                    active
+                      ? "rounded-full border border-coffee-600 bg-coffee-600 px-3 py-1.5 text-sm font-medium text-white"
+                      : "rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-600"
+                  }
+                >
+                  {day.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </section>
 
       <Button
