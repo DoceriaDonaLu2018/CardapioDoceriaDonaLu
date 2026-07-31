@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 
 import { prisma } from "@/lib/prisma";
 import { deleteGift } from "@/app/admin/promocoes/actions";
+import { GiftThumbnail } from "@/components/gifts/gift-thumbnail";
 import { Button } from "@/components/ui/button";
 import { DeleteConfirmDialog } from "@/components/admin/delete-confirm-dialog";
 import { GiftFormDialog } from "./gift-form-dialog";
@@ -21,7 +22,8 @@ export default async function BrindesPage() {
             Brindes
           </h1>
           <p className="mt-1 text-stone-500">
-            Liberados automaticamente ao atingir o valor mínimo.
+            Liberados automaticamente ao atingir o valor mínimo. Inclua uma
+            foto para destacar no carrinho.
           </p>
         </div>
         <GiftFormDialog
@@ -43,14 +45,17 @@ export default async function BrindesPage() {
           gifts.map((gift) => (
             <li
               key={gift.id}
-              className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
             >
-              <div>
-                <p className="font-medium text-stone-800">{gift.name}</p>
-                <p className="text-xs text-stone-500">
-                  A partir de R$ {gift.minPurchaseValue.toFixed(2)}
-                  {gift.isActive ? "" : " · inativo"}
-                </p>
+              <div className="flex items-center gap-3">
+                <GiftThumbnail name={gift.name} imageUrl={gift.imageUrl} />
+                <div>
+                  <p className="font-medium text-stone-800">{gift.name}</p>
+                  <p className="text-xs text-stone-500">
+                    A partir de R$ {gift.minPurchaseValue.toFixed(2)}
+                    {gift.isActive ? "" : " · inativo"}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 <GiftFormDialog
@@ -59,6 +64,7 @@ export default async function BrindesPage() {
                     name: gift.name,
                     minPurchaseValue: gift.minPurchaseValue,
                     isActive: gift.isActive,
+                    imageUrl: gift.imageUrl,
                   }}
                   trigger={
                     <Button type="button" variant="outline" size="sm">

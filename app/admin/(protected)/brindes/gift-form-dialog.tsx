@@ -8,6 +8,7 @@ import {
   updateGift,
   type PromoActionState,
 } from "@/app/admin/promocoes/actions";
+import { ImageUpload } from "@/components/admin/image-upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,7 @@ export type GiftFormValues = {
   name: string;
   minPurchaseValue: number;
   isActive: boolean;
+  imageUrl: string | null;
 };
 
 export function GiftFormDialog({
@@ -57,6 +59,18 @@ export function GiftFormDialog({
         </DialogHeader>
         <form action={formAction} className="space-y-4">
           {isEditing && <input type="hidden" name="id" value={gift!.id} />}
+
+          <div className="space-y-2">
+            <Label>Foto do brinde (opcional)</Label>
+            <ImageUpload
+              name="imageUrl"
+              defaultValue={gift?.imageUrl ?? ""}
+            />
+            <p className="text-xs text-stone-400">
+              Miniatura exibida no carrinho e no checkout quando o cliente
+              desbloquear o brinde.
+            </p>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="name">Nome</Label>

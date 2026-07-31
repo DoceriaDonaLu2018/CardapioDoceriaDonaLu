@@ -8,6 +8,7 @@ import { Loader2, Lock, MapPin } from "lucide-react";
 
 import { createOnlineOrder, previewCoupon } from "@/app/checkout/actions";
 import { useCart } from "@/components/cart/cart-context";
+import { GiftThumbnail } from "@/components/gifts/gift-thumbnail";
 import { formatPhone, formatPrice } from "@/lib/format";
 import { formatModifiersLines } from "@/lib/modifiers/types";
 import { STORE_ADDRESS } from "@/lib/store-info";
@@ -31,6 +32,7 @@ type GiftOption = {
   id: string;
   name: string;
   minPurchaseValue: number;
+  imageUrl: string | null;
 };
 
 export function CheckoutForm({
@@ -436,26 +438,57 @@ export function CheckoutForm({
         {gifts.length > 0 && (
           <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2 text-sm">
             <p className="font-medium text-stone-700">Brindes</p>
-            <ul className="mt-1 space-y-1 text-xs text-stone-500">
+            <ul className="mt-2 space-y-2">
               {gifts.map((gift) => {
                 const unlocked = total >= gift.minPurchaseValue;
                 return (
-                  <li key={gift.id}>
-                    {unlocked ? "✓" : "○"} {gift.name} — a partir de{" "}
-                    {formatPrice(gift.minPurchaseValue)}
+                  <li
+                    key={gift.id}
+                    className={cn(
+                      "flex items-center gap-3 text-xs",
+                      unlocked ? "text-stone-700" : "text-stone-400"
+                    )}
+                  >
+                    <GiftThumbnail
+                      name={gift.name}
+                      imageUrl={gift.imageUrl}
+                      size="sm"
+                      className={unlocked ? undefined : "opacity-50"}
+                    />
+                    <span className="min-w-0">
+                      <span className="font-medium">
+                        {unlocked ? "✓ " : "○ "}
+                        {gift.name}
+                      </span>
+                      <span className="block text-stone-500">
+                        a partir de {formatPrice(gift.minPurchaseValue)}
+                      </span>
+                    </span>
                   </li>
                 );
               })}
             </ul>
             {unlockedGifts.length > 0 && (
-              <p className="mt-2 text-xs font-medium text-emerald-700">
-                Brinde incluso:{" "}
-                {
-                  unlockedGifts.reduce((best, g) =>
-                    g.minPurchaseValue >= best.minPurchaseValue ? g : best
-                  ).name
-                }
-              </p>
+              <div className="mt-3 flex items-center gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2">
+                {(() => {
+                  const best = unlockedGifts.reduce((a, g) =>
+                    g.minPurchaseValue >= a.minPurchaseValue ? g : a
+                  );
+                  return (
+                    <>
+                      <GiftThumbnail
+                        name={best.name}
+                        imageUrl={best.imageUrl}
+                        size="sm"
+                      />
+                      <p className="text-xs font-medium text-emerald-800">
+                        Parabéns! Brinde incluso:{" "}
+                        <span className="font-semibold">{best.name}</span>
+                      </p>
+                    </>
+                  );
+                })()}
+              </div>
             )}
           </div>
         )}

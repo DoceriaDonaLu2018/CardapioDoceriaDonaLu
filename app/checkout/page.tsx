@@ -65,6 +65,7 @@ export default async function CheckoutPage() {
               id: g.id,
               name: g.name,
               minPurchaseValue: g.minPurchaseValue,
+              imageUrl: g.imageUrl,
             }))}
           />
         </main>

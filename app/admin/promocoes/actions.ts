@@ -129,6 +129,7 @@ export async function createGift(
     name: String(formData.get("name") ?? ""),
     minPurchaseValue: parseMoney(formData.get("minPurchaseValue")),
     isActive: formData.get("isActive") === "on",
+    imageUrl: String(formData.get("imageUrl") ?? ""),
   });
   if (!parsed.success) {
     return {
@@ -141,6 +142,7 @@ export async function createGift(
         name: parsed.data.name,
         minPurchaseValue: parsed.data.minPurchaseValue,
         isActive: parsed.data.isActive,
+        imageUrl: parsed.data.imageUrl,
       },
     });
   } catch {
@@ -160,6 +162,7 @@ export async function updateGift(
     name: String(formData.get("name") ?? ""),
     minPurchaseValue: parseMoney(formData.get("minPurchaseValue")),
     isActive: formData.get("isActive") === "on",
+    imageUrl: String(formData.get("imageUrl") ?? ""),
   });
   if (!parsed.success || !parsed.data.id) {
     return {
@@ -175,6 +178,7 @@ export async function updateGift(
         name: parsed.data.name,
         minPurchaseValue: parsed.data.minPurchaseValue,
         isActive: parsed.data.isActive,
+        imageUrl: parsed.data.imageUrl,
       },
     });
   } catch {

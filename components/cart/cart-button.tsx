@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { MapPin, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 
 import { getCartStoreStatus } from "@/app/checkout/store-status-action";
+import { getActiveGiftsForCart } from "@/app/checkout/gifts-action";
 import { useCart } from "@/components/cart/cart-context";
+import { GiftThumbnail } from "@/components/gifts/gift-thumbnail";
 import { formatPrice } from "@/lib/format";
 import { formatModifiersLines } from "@/lib/modifiers/types";
 import { STORE_ADDRESS } from "@/lib/store-info";
@@ -21,17 +23,34 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
+type CartGift = {
+  id: string;
+  name: string;
+  minPurchaseValue: number;
+  imageUrl: string | null;
+};
+
 export function CartButton() {
   const { items, itemCount, total, setQuantity, removeItem } = useCart();
   const [storeOpen, setStoreOpen] = useState(true);
   const [closedMessage, setClosedMessage] = useState<string | null>(null);
+  const [gifts, setGifts] = useState<CartGift[]>([]);
 
   useEffect(() => {
     void getCartStoreStatus().then((status) => {
       setStoreOpen(status.isOpen);
       setClosedMessage(status.isOpen ? null : status.message);
     });
+    void getActiveGiftsForCart().then(setGifts);
   }, []);
+
+  const unlockedGift = useMemo(() => {
+    const eligible = gifts.filter((g) => total >= g.minPurchaseValue);
+    if (eligible.length === 0) return null;
+    return eligible.reduce((best, g) =>
+      g.minPurchaseValue >= best.minPurchaseValue ? g : best
+    );
+  }, [gifts, total]);
 
   return (
     <Sheet>
@@ -168,6 +187,23 @@ export function CartButton() {
             <p className="mb-3 w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               {closedMessage} No checkout você pode fazer uma encomenda.
             </p>
+          )}
+          {unlockedGift && items.length > 0 && (
+            <div className="mb-3 flex w-full items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+              <GiftThumbnail
+                name={unlockedGift.name}
+                imageUrl={unlockedGift.imageUrl}
+                size="sm"
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-emerald-800">
+                  Brinde desbloqueado!
+                </p>
+                <p className="truncate text-sm font-semibold text-emerald-900">
+                  {unlockedGift.name}
+                </p>
+              </div>
+            </div>
           )}
           <div className="mb-3 flex w-full items-center justify-between text-base">
             <span className="text-stone-500">Total</span>

@@ -187,6 +187,15 @@ export const giftWriteSchema = z.object({
   name: plainText(120, "o nome do brinde"),
   minPurchaseValue: z.number().finite().min(0).max(1_000_000),
   isActive: z.boolean(),
+  /** Vazio / ausente → null (brinde sem foto; UI usa ícone). */
+  imageUrl: imageUrlSchema
+    .optional()
+    .nullable()
+    .transform((v) => {
+      if (v == null) return null;
+      const trimmed = v.trim();
+      return trimmed === "" ? null : trimmed;
+    }),
 });
 
 export const pdvOrderItemSchema = z.object({
