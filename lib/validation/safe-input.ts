@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { isAllowedImageUrl } from "@/lib/images";
 import { parseDatetimeLocalAsBrasilia } from "@/lib/timezone";
 
 /**
@@ -73,18 +74,13 @@ export const categoryWriteSchema = z.object({
   order: z.coerce.number().int().min(0).max(9999).default(0),
 });
 
-/** imageUrl: só proxy interno /api/file ou placeholder conhecido. */
+/** imageUrl: proxy /api/file, placeholders, Unsplash (seed) ou Blob pública. */
 const imageUrlSchema = z
   .string()
   .trim()
   .max(500)
   .refine(
-    (value) => {
-      if (!value) return true;
-      if (value.startsWith("/api/file?pathname=")) return true;
-      if (value.startsWith("https://placehold.co/")) return true;
-      return false;
-    },
+    (value) => !value || isAllowedImageUrl(value),
     { message: "URL de imagem não permitida." }
   );
 

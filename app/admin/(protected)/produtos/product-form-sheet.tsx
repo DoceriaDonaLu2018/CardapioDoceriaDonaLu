@@ -179,7 +179,11 @@ export function ProductFormSheet({
 
           <div className="space-y-2">
             <Label>Imagem do produto</Label>
-            <ImageUpload name="imageUrl" defaultValue={product?.imageUrl} />
+            <ImageUpload
+              key={product?.id ?? "new-product"}
+              name="imageUrl"
+              defaultValue={product?.imageUrl ?? ""}
+            />
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-stone-200 p-3">

@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Image from "next/image";
 import { Loader2, Pencil, Search, Trash2 } from "lucide-react";
 
 import {
@@ -15,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { SafeImage } from "@/components/ui/safe-image";
 import {
   Table,
   TableBody,
@@ -316,12 +316,13 @@ export function ProdutosClient({
                   </TableCell>
                   <TableCell>
                     <div className="relative h-12 w-16 overflow-hidden rounded-md bg-stone-100">
-                      <Image
+                      <SafeImage
                         src={product.imageUrl}
                         alt={product.title}
                         fill
                         sizes="64px"
                         className="object-cover"
+                        fallbackIconClassName="h-4 w-4"
                       />
                     </div>
                   </TableCell>

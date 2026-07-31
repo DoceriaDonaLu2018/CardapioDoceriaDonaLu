@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
+import { normalizeProductImageUrl } from "@/lib/images";
 import { adminModifierGroupsSchema } from "@/lib/modifiers/types";
 import { idSchema, productWriteSchema } from "@/lib/validation/safe-input";
 import { z } from "zod";
@@ -104,9 +105,7 @@ export async function createProduct(
       data: {
         title: data.title,
         description: data.description,
-        imageUrl:
-          data.imageUrl ||
-          "https://placehold.co/800x450/cf2d6c/ffffff?text=Dona+Lu",
+        imageUrl: normalizeProductImageUrl(data.imageUrl),
         price: data.price,
         costPrice: data.costPrice,
         isAvailable: data.isAvailable,
@@ -161,9 +160,7 @@ export async function updateProduct(
       data: {
         title: data.title,
         description: data.description,
-        imageUrl:
-          data.imageUrl ||
-          "https://placehold.co/800x450/cf2d6c/ffffff?text=Dona+Lu",
+        imageUrl: normalizeProductImageUrl(data.imageUrl),
         price: data.price,
         costPrice: data.costPrice,
         isAvailable: data.isAvailable,
