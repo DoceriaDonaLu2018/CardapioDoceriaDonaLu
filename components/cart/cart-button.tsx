@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { MapPin, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 
@@ -9,6 +8,7 @@ import { getCartStoreStatus } from "@/app/checkout/store-status-action";
 import { getActiveGiftsForCart } from "@/app/checkout/gifts-action";
 import { useCart } from "@/components/cart/cart-context";
 import { GiftThumbnail } from "@/components/gifts/gift-thumbnail";
+import { SafeImage } from "@/components/ui/safe-image";
 import { formatPrice } from "@/lib/format";
 import { formatModifiersLines } from "@/lib/modifiers/types";
 import { STORE_ADDRESS } from "@/lib/store-info";
@@ -109,7 +109,7 @@ export function CartButton() {
                   className="flex gap-3 border-b border-stone-100 pb-4"
                 >
                   <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-stone-100">
-                    <Image
+                    <SafeImage
                       src={item.imageUrl}
                       alt={item.title}
                       fill

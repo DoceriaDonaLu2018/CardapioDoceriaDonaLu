@@ -1,8 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import { Gift } from "lucide-react";
 
+import {
+  sanitizeImageSrc,
+  shouldBypassImageOptimization,
+} from "@/lib/images";
 import { cn } from "@/lib/utils";
 
 type GiftThumbnailProps = {
@@ -13,38 +18,14 @@ type GiftThumbnailProps = {
   className?: string;
 };
 
-/**
- * Miniatura de brinde — Next/Image quando há URL; ícone Gift no fallback.
- */
-export function GiftThumbnail({
-  name,
-  imageUrl,
-  size = "sm",
+function GiftFallback({
+  size,
   className,
-}: GiftThumbnailProps) {
-  const box =
-    size === "md" ? "h-16 w-16" : "h-12 w-12";
-
-  if (imageUrl) {
-    return (
-      <span
-        className={cn(
-          "relative shrink-0 overflow-hidden rounded-md bg-stone-100 ring-1 ring-stone-200/80",
-          box,
-          className
-        )}
-      >
-        <Image
-          src={imageUrl}
-          alt={name}
-          fill
-          sizes={size === "md" ? "64px" : "48px"}
-          className="object-cover object-center"
-        />
-      </span>
-    );
-  }
-
+}: {
+  size: "sm" | "md";
+  className?: string;
+}) {
+  const box = size === "md" ? "h-16 w-16" : "h-12 w-12";
   return (
     <span
       className={cn(
@@ -55,6 +36,44 @@ export function GiftThumbnail({
       aria-hidden
     >
       <Gift className={size === "md" ? "h-7 w-7" : "h-5 w-5"} />
+    </span>
+  );
+}
+
+/**
+ * Miniatura de brinde — Next/Image quando há URL válida; ícone Gift no fallback.
+ */
+export function GiftThumbnail({
+  name,
+  imageUrl,
+  size = "sm",
+  className,
+}: GiftThumbnailProps) {
+  const safe = sanitizeImageSrc(imageUrl);
+  const [failed, setFailed] = useState(false);
+  const box = size === "md" ? "h-16 w-16" : "h-12 w-12";
+
+  if (!safe || failed) {
+    return <GiftFallback size={size} className={className} />;
+  }
+
+  return (
+    <span
+      className={cn(
+        "relative shrink-0 overflow-hidden rounded-md bg-stone-100 ring-1 ring-stone-200/80",
+        box,
+        className
+      )}
+    >
+      <Image
+        src={safe}
+        alt={name}
+        fill
+        sizes={size === "md" ? "64px" : "48px"}
+        className="object-cover object-center"
+        unoptimized={shouldBypassImageOptimization(safe)}
+        onError={() => setFailed(true)}
+      />
     </span>
   );
 }

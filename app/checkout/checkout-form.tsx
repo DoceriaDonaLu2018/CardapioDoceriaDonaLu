@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Lock, MapPin } from "lucide-react";
@@ -9,6 +8,7 @@ import { Loader2, Lock, MapPin } from "lucide-react";
 import { createOnlineOrder, previewCoupon } from "@/app/checkout/actions";
 import { useCart } from "@/components/cart/cart-context";
 import { GiftThumbnail } from "@/components/gifts/gift-thumbnail";
+import { SafeImage } from "@/components/ui/safe-image";
 import { formatPhone, formatPrice } from "@/lib/format";
 import { formatModifiersLines } from "@/lib/modifiers/types";
 import { STORE_ADDRESS } from "@/lib/store-info";
@@ -370,9 +370,9 @@ export function CheckoutForm({
             return (
               <li key={item.lineId} className="flex gap-3">
                 <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-stone-100">
-                  <Image
+                  <SafeImage
                     src={item.imageUrl}
-                    alt=""
+                    alt={item.title}
                     fill
                     sizes="48px"
                     className="object-cover"
