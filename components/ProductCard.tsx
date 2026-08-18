@@ -167,10 +167,10 @@ export function ProductCard({ product, className }: ProductCardProps) {
         <DialogContent
           id={dialogId}
           showCloseButton={false}
-          className="max-h-[90dvh] w-[min(100%,28rem)] gap-0 overflow-y-auto border-stone-200 bg-white p-0 sm:rounded-2xl"
+          className="grid max-h-[min(90dvh,40rem)] w-[min(100%-1rem,28rem)] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden border-stone-200 bg-white p-0 sm:rounded-2xl"
         >
-          <div className="relative">
-            <div className="relative aspect-square w-full overflow-hidden rounded-t-lg bg-stone-100 sm:aspect-[4/3] sm:rounded-t-2xl">
+          <div className="relative shrink-0">
+            <div className="relative h-44 w-full overflow-hidden bg-stone-100 sm:h-52">
               <SafeImage
                 src={product.imageUrl}
                 alt={product.title}
@@ -188,16 +188,18 @@ export function ProductCard({ product, className }: ProductCardProps) {
             </DialogClose>
           </div>
 
-          <div className="flex flex-col gap-3 px-5 pb-6 pt-4 sm:px-6 sm:pb-7 sm:pt-5">
+          <div className="min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-5 py-4 sm:px-6">
             <DialogTitle className="text-left text-lg font-bold leading-tight text-stone-800 sm:text-xl">
               {product.title}
             </DialogTitle>
 
-            <DialogDescription className="text-left text-sm leading-relaxed text-stone-500 sm:text-base">
+            <DialogDescription className="mt-2 text-left text-sm leading-relaxed text-stone-500 sm:text-base">
               {product.description}
             </DialogDescription>
+          </div>
 
-            <p className="mt-1 text-left text-lg font-bold text-coffee-700 sm:text-xl">
+          <div className="shrink-0 border-t border-stone-100 px-5 py-3 sm:px-6 sm:py-4">
+            <p className="mb-3 text-left text-lg font-bold text-coffee-700 sm:text-xl">
               {formatPrice(product.price)}
               {hasModifiers && (
                 <span className="ml-2 text-xs font-normal text-stone-400">
@@ -207,13 +209,13 @@ export function ProductCard({ product, className }: ProductCardProps) {
             </p>
 
             {soldOut ? (
-              <p className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50 text-sm font-semibold uppercase tracking-wide text-stone-500">
+              <p className="flex h-12 w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50 text-sm font-semibold uppercase tracking-wide text-stone-500">
                 Esgotado
               </p>
             ) : (
               <Button
                 type="button"
-                className="mt-2 h-12 w-full bg-coffee-600 text-base text-white hover:bg-coffee-700"
+                className="h-12 w-full bg-coffee-600 text-base text-white hover:bg-coffee-700"
                 onClick={handleDetailAdd}
               >
                 {hasModifiers

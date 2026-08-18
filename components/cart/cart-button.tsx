@@ -70,7 +70,10 @@ export function CartButton() {
         </Button>
       </SheetTrigger>
 
-      <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
+      <SheetContent
+        side="right"
+        className="flex h-full w-full flex-col overflow-hidden sm:max-w-md"
+      >
         <SheetHeader>
           <SheetTitle className="font-serif text-2xl text-stone-800">
             Seu pedido
@@ -95,7 +98,7 @@ export function CartButton() {
           </div>
         </div>
 
-        <div className="mt-4 flex-1 space-y-4 overflow-y-auto pr-1">
+        <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
           {items.length === 0 ? (
             <p className="py-10 text-center text-sm text-stone-500">
               Seu carrinho está vazio. Escolha um doce no cardápio.
@@ -118,7 +121,7 @@ export function CartButton() {
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-stone-800">
+                    <p className="break-words font-medium text-stone-800">
                       {item.title}
                     </p>
                     {modLines.length > 0 && (
@@ -126,7 +129,7 @@ export function CartButton() {
                         {modLines.map((line) => (
                           <li
                             key={line}
-                            className="truncate text-xs text-stone-500"
+                            className="break-words text-xs text-stone-500"
                           >
                             · {line}
                           </li>
@@ -182,7 +185,7 @@ export function CartButton() {
           )}
         </div>
 
-        <SheetFooter className="mt-4 border-t border-stone-100 pt-4 sm:flex-col">
+        <SheetFooter className="mt-4 shrink-0 border-t border-stone-100 pt-4 sm:flex-col">
           {!storeOpen && closedMessage && items.length > 0 && (
             <p className="mb-3 w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               {closedMessage} No checkout você pode fazer uma encomenda.
