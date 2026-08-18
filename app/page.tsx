@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getHighlightedReviews } from "@/lib/reviews/queries";
 import { CatalogShell } from "@/components/catalog/catalog-shell";
+import { Footer } from "@/components/layout/Footer";
 import { HomeBannerCarousel } from "@/components/home-banner-carousel";
 import { ProductCard } from "@/components/ProductCard";
 import { HighlightedReviewsSection } from "@/components/reviews/review-cards";
@@ -99,7 +100,7 @@ export default async function Home() {
   });
 
   return (
-    <CatalogShell categories={headerCategories}>
+    <CatalogShell categories={headerCategories} footer={<Footer />}>
       <HomeBannerCarousel banners={slides} />
 
       <section className="border-b border-stone-200 bg-white">

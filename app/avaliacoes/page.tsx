@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getVisibleReviewsPage } from "@/lib/reviews/queries";
 import { CatalogShell } from "@/components/catalog/catalog-shell";
+import { Footer } from "@/components/layout/Footer";
 import { ReviewCard } from "@/components/reviews/review-cards";
 import { ReviewForm } from "./review-form";
 
@@ -33,7 +34,7 @@ export default async function AvaliacoesPage({
   ]);
 
   return (
-    <CatalogShell categories={[]}>
+      <CatalogShell categories={[]} footer={<Footer />}>
       <div className="container max-w-4xl space-y-10 py-12">
         <div className="text-center">
           <h1 className="font-serif text-3xl font-bold text-stone-800 sm:text-4xl">
