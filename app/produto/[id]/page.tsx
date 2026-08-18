@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { idSchema } from "@/lib/validation/safe-input";
 import { CatalogShell } from "@/components/catalog/catalog-shell";
+import { Footer } from "@/components/layout/Footer";
 import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 
@@ -74,7 +75,7 @@ export default async function ProdutoPage({ params }: PageProps) {
     .map((c) => ({ id: c.slug, label: c.name }));
 
   return (
-    <CatalogShell categories={headerCategories}>
+      <CatalogShell categories={headerCategories} footer={<Footer />}>
       <div className="container max-w-lg py-8">
         <Button
           asChild
