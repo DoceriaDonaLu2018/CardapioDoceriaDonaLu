@@ -51,7 +51,7 @@ export function CheckoutForm({
   gifts: GiftOption[];
 }) {
   const router = useRouter();
-  const { items, total, clear } = useCart();
+  const { items, total, clear, hydrated } = useCart();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -159,6 +159,15 @@ export function CheckoutForm({
         `/pedido/${result.orderId}/pagar?token=${encodeURIComponent(result.accessToken)}`
       );
     });
+  }
+
+  if (!hydrated) {
+    return (
+      <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center text-stone-500">
+        <Loader2 className="mx-auto h-6 w-6 animate-spin text-coffee-600" />
+        <p className="mt-3 text-sm">Carregando seu pedido…</p>
+      </div>
+    );
   }
 
   if (items.length === 0) {

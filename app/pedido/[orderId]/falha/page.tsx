@@ -12,6 +12,9 @@ import { failureMotivoSchema } from "@/lib/validation/safe-input";
 
 export const dynamic = "force-dynamic";
 
+// O paymentAccessToken trafega na query; evita vazá-lo via header Referer.
+export const metadata = { referrer: "no-referrer" as const };
+
 interface PageProps {
   params: Promise<{ orderId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;

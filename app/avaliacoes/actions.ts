@@ -25,12 +25,10 @@ async function clientIp(): Promise<string> {
   return h.get("x-real-ip") || "unknown";
 }
 
-/** Verifica se o WhatsApp tem pedido PAID ou COMPLETED. */
+/** Verifica se o WhatsApp tem pedido PAID ou COMPLETED. Não devolve PII. */
 export async function verifyPurchaseByPhone(
   rawPhone: unknown
-): Promise<
-  ActionOk<{ phone: string; customerName: string | null }> | ActionErr
-> {
+): Promise<ActionOk<{ phone: string }> | ActionErr> {
   const parsed = reviewPhoneSchema.safeParse(rawPhone);
   if (!parsed.success) {
     return {
@@ -58,8 +56,7 @@ export async function verifyPurchaseByPhone(
       customerPhone: phone,
       status: { in: [OrderStatus.PAID, OrderStatus.COMPLETED] },
     },
-    orderBy: { createdAt: "desc" },
-    select: { customerName: true },
+    select: { id: true },
   });
 
   if (!order) {
@@ -73,7 +70,6 @@ export async function verifyPurchaseByPhone(
   return {
     success: true,
     phone,
-    customerName: order.customerName,
   };
 }
 
@@ -119,6 +115,7 @@ export async function submitVerifiedReview(
     where: {
       customerPhone: phone,
       status: { in: [OrderStatus.PAID, OrderStatus.COMPLETED] },
+      items: { some: { productId: parsed.data.productId } },
     },
     select: { id: true },
   });
@@ -126,7 +123,7 @@ export async function submitVerifiedReview(
   if (!order) {
     return {
       success: false,
-      error: "Compra não verificada para este WhatsApp.",
+      error: "Compra não verificada para este produto neste WhatsApp.",
     };
   }
 
@@ -140,6 +137,22 @@ export async function submitVerifiedReview(
 
   if (!product) {
     return { success: false, error: "Produto inválido." };
+  }
+
+  const alreadyReviewed = await prisma.review.findFirst({
+    where: {
+      productId: product.id,
+      customerPhone: phone,
+      isManual: false,
+    },
+    select: { id: true },
+  });
+
+  if (alreadyReviewed) {
+    return {
+      success: false,
+      error: "Você já enviou uma avaliação para este produto.",
+    };
   }
 
   try {

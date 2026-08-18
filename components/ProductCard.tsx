@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, useState } from "react";
-import Image from "next/image";
 import { Check, Plus, X } from "lucide-react";
 
 import { formatPrice } from "@/lib/format";
@@ -9,6 +8,7 @@ import type { ModifierGroupDef } from "@/lib/modifiers/types";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/components/cart/cart-context";
 import { ProductCustomizeDialog } from "@/components/product-customize-dialog";
+import { SafeImage } from "@/components/ui/safe-image";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -109,7 +109,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
           }}
         >
           <div className="relative aspect-square w-full overflow-hidden bg-stone-100">
-            <Image
+            <SafeImage
               src={product.imageUrl}
               alt={product.title}
               fill
@@ -171,7 +171,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
         >
           <div className="relative">
             <div className="relative aspect-square w-full overflow-hidden rounded-t-lg bg-stone-100 sm:aspect-[4/3] sm:rounded-t-2xl">
-              <Image
+              <SafeImage
                 src={product.imageUrl}
                 alt={product.title}
                 fill

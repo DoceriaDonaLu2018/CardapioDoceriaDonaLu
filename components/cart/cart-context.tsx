@@ -30,6 +30,8 @@ type CartContextValue = {
   items: CartItem[];
   itemCount: number;
   total: number;
+  /** false até ler o localStorage — evita flash de "carrinho vazio" no checkout. */
+  hydrated: boolean;
   /** Adiciona produto simples (sem mods) — compatível com fluxo antigo. */
   addItem: (
     item: {
@@ -206,13 +208,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
       items,
       itemCount,
       total,
+      hydrated,
       addItem,
       addConfiguredItem,
       setQuantity,
       removeItem,
       clear,
     };
-  }, [items, addItem, addConfiguredItem, setQuantity, removeItem, clear]);
+  }, [
+    items,
+    addItem,
+    addConfiguredItem,
+    setQuantity,
+    removeItem,
+    clear,
+    hydrated,
+  ]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

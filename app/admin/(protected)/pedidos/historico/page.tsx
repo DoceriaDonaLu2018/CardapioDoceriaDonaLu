@@ -10,9 +10,16 @@ import { OrderHistoryFilters } from "@/components/admin/order-history-filters";
 export const dynamic = "force-dynamic";
 
 const VALID_PERIODS = new Set(["today", "week", "month", "all"]);
+const PAGE_SIZE = 50;
 
 interface HistoricoPageProps {
-  searchParams: Promise<{ period?: string; date?: string }>;
+  searchParams: Promise<{ period?: string; date?: string; page?: string }>;
+}
+
+function parsePage(raw: string | undefined): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(10_000, Math.floor(n));
 }
 
 export default async function HistoricoPedidosPage({
@@ -26,10 +33,16 @@ export default async function HistoricoPedidosPage({
     : "month";
   const selectedDate = params.date?.trim() || null;
   const dayRange = selectedDate ? getBrasiliaDayRange(selectedDate) : null;
+  const page = parsePage(params.page);
 
   const createdAtFilter = dayRange
     ? { gte: dayRange.gte, lt: dayRange.lt }
     : getOrderDateFilter(period);
+
+  const where = {
+    status: "COMPLETED" as const,
+    ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
+  };
 
   let orders: Awaited<
     ReturnType<
@@ -58,15 +71,19 @@ export default async function HistoricoPedidosPage({
       }>
     >
   > = [];
+  let total = 0;
   let loadError: string | null = null;
 
   try {
+    total = await prisma.order.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const safePage = Math.min(page, totalPages);
+
     orders = await prisma.order.findMany({
-      where: {
-        status: "COMPLETED",
-        ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
-      },
+      where,
       orderBy: { createdAt: "desc" },
+      skip: (safePage - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       select: {
         id: true,
         customerName: true,
@@ -95,6 +112,9 @@ export default async function HistoricoPedidosPage({
       "Não foi possível carregar o histórico. Verifique se o banco de dados está atualizado.";
   }
 
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+
   const serializedOrders = orders.map((order) => ({
     id: order.id,
     customerName: order.customerName,
@@ -119,6 +139,17 @@ export default async function HistoricoPedidosPage({
     })),
   }));
 
+  function hrefForPage(nextPage: number): string {
+    const qs = new URLSearchParams();
+    if (dayRange && selectedDate) {
+      qs.set("date", selectedDate);
+    } else {
+      qs.set("period", period);
+    }
+    if (nextPage > 1) qs.set("page", String(nextPage));
+    return `/admin/pedidos/historico?${qs.toString()}`;
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -141,7 +172,37 @@ export default async function HistoricoPedidosPage({
         </p>
       )}
 
+      <p className="text-sm text-stone-500">
+        {total} pedido{total === 1 ? "" : "s"} neste filtro
+        {totalPages > 1 ? ` · página ${safePage} de ${totalPages}` : ""}.
+      </p>
+
       <HistoricoTable orders={serializedOrders} />
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3">
+          {safePage > 1 ? (
+            <a
+              href={hrefForPage(safePage - 1)}
+              className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:border-coffee-300"
+            >
+              Anterior
+            </a>
+          ) : (
+            <span />
+          )}
+          {safePage < totalPages ? (
+            <a
+              href={hrefForPage(safePage + 1)}
+              className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:border-coffee-300"
+            >
+              Próxima
+            </a>
+          ) : (
+            <span />
+          )}
+        </div>
+      )}
     </div>
   );
 }

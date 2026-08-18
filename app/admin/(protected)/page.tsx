@@ -50,7 +50,7 @@ export default async function DashboardPage() {
     {
       label: "Faturamento do Mês",
       value: formatPrice(data.month.revenue),
-      hint: `Lucro ${formatPrice(data.month.profit)} · margem ${formatPercent(data.month.margin)}`,
+      hint: `Últimos 30 dias · lucro ${formatPrice(data.month.profit)} · margem ${formatPercent(data.month.margin)}`,
       icon: CalendarDays,
       highlight: true,
     },
@@ -109,7 +109,7 @@ export default async function DashboardPage() {
               Top 7 Produtos Mais Vendidos
             </CardTitle>
             <CardDescription>
-              Quantidade vendida no mês civil atual (pedidos concluídos).
+              Quantidade vendida nos últimos 30 dias (pedidos concluídos).
             </CardDescription>
           </CardHeader>
           <CardContent>

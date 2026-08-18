@@ -8,6 +8,25 @@ import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 
 const MP_API = "https://api.mercadopago.com";
 
+/** Timeout padrão das chamadas ao gateway (evita handler pendurado). */
+const MP_FETCH_TIMEOUT_MS = 8000;
+
+/**
+ * IDs de payment / merchant_order do MP são numéricos.
+ * Sem isso, `payment_id=1/../users/me` no retorno do checkout faria o
+ * Access Token da loja bater em outro path da API (SSRF interno).
+ */
+const MP_RESOURCE_ID_RE = /^\d{1,24}$/;
+
+export function parseMercadoPagoResourceId(
+  raw: string | number | null | undefined
+): string | null {
+  if (raw == null) return null;
+  const id = String(raw).trim();
+  if (!MP_RESOURCE_ID_RE.test(id)) return null;
+  return id;
+}
+
 function getAccessToken(): string {
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
   if (!token) {
@@ -183,6 +202,7 @@ export async function createCheckoutProPreference(
       "X-Idempotency-Key": `ddl-pref-${input.orderId}-${input.paymentChoice}`,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(MP_FETCH_TIMEOUT_MS),
   });
 
   const data = (await response.json()) as {
@@ -195,7 +215,11 @@ export async function createCheckoutProPreference(
   };
 
   if (!response.ok || !data.id) {
-    console.error("Mercado Pago create preference failed:", data);
+    console.error("Mercado Pago create preference failed:", {
+      error: data.error,
+      message: data.message,
+      cause: data.cause?.[0]?.description,
+    });
     const msg =
       data.cause?.[0]?.description ||
       data.message ||
@@ -227,10 +251,16 @@ export async function fetchMercadoPagoPayment(paymentId: string): Promise<{
   externalReference: string | null;
   paymentMethodId: string | null;
 }> {
+  const id = parseMercadoPagoResourceId(paymentId);
+  if (!id) {
+    throw new Error("ID de pagamento inválido.");
+  }
+
   const accessToken = getAccessToken();
-  const response = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
+  const response = await fetch(`${MP_API}/v1/payments/${id}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
+    signal: AbortSignal.timeout(MP_FETCH_TIMEOUT_MS),
   });
 
   const data = (await response.json()) as {
@@ -276,9 +306,12 @@ export function verifyMercadoPagoWebhookSignature(params: {
   const v1 = parts.v1;
   if (!ts || !v1) return false;
 
-  const tsMs = Number(ts);
-  if (Number.isFinite(tsMs)) {
-    // MP recomenda validar ts; janela folgada evita falso 401 por skew de relógio.
+  const tsNumber = Number(ts);
+  if (Number.isFinite(tsNumber)) {
+    // MP pode enviar ts em segundos (10 dígitos) ou milissegundos (13).
+    // Normaliza para ms antes de comparar (segundos → *1000) evitando 401 espúrio.
+    const tsMs = ts.trim().length <= 10 ? tsNumber * 1000 : tsNumber;
+    // Janela folgada evita falso 401 por skew de relógio.
     const skew = Math.abs(Date.now() - tsMs);
     if (skew > 15 * 60 * 1000) return false;
   }

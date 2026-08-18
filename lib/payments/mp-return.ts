@@ -4,6 +4,8 @@
  *
  * @see https://www.mercadopago.com.br/developers/pt/docs/checkout-pro/checkout-customization/user-interface/redirection
  */
+import { parseMercadoPagoResourceId } from "@/lib/payments/mercadopago";
+
 export type MercadoPagoReturnParams = {
   paymentId: string | null;
   status: string | null;
@@ -28,15 +30,18 @@ export function parseMercadoPagoReturnParams(
 ): MercadoPagoReturnParams {
   return {
     // Docs: payment_id; legado: collection_id (mesmo valor na prática).
-    paymentId:
+    paymentId: parseMercadoPagoResourceId(
       firstString(searchParams.payment_id) ||
-      firstString(searchParams.collection_id),
+        firstString(searchParams.collection_id)
+    ),
     // Docs: status; legado: collection_status.
     status:
       firstString(searchParams.status) ||
       firstString(searchParams.collection_status),
     externalReference: firstString(searchParams.external_reference),
-    merchantOrderId: firstString(searchParams.merchant_order_id),
+    merchantOrderId: parseMercadoPagoResourceId(
+      firstString(searchParams.merchant_order_id)
+    ),
     preferenceId: firstString(searchParams.preference_id),
     paymentType: firstString(searchParams.payment_type),
   };

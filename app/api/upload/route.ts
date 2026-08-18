@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
+import { headers } from "next/headers";
 
 import { auth } from "@/auth";
-
-const ALLOWED_CONTENT_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-]);
+import {
+  ALLOWED_IMAGE_CONTENT_TYPES,
+  sniffImageContentType,
+} from "@/lib/images";
+import { assertMemoryRateLimit } from "@/lib/payments/rate-limit";
 
 const MAX_SIZE_IN_BYTES = 4 * 1024 * 1024;
 
@@ -46,19 +45,31 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 
+  const hdrs = await headers();
+  const ip =
+    hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    hdrs.get("x-real-ip") ||
+    "unknown";
+  const uploadLimit = assertMemoryRateLimit(
+    `upload:ip:${ip}`,
+    20,
+    15 * 60 * 1000
+  );
+  if (!uploadLimit.ok) {
+    return NextResponse.json(
+      {
+        error: `Muitos uploads. Aguarde ${uploadLimit.retryAfterSec}s e tente novamente.`,
+      },
+      { status: 429 }
+    );
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
 
   if (!(file instanceof File)) {
     return NextResponse.json(
       { error: "Nenhum arquivo enviado." },
-      { status: 400 }
-    );
-  }
-
-  if (!ALLOWED_CONTENT_TYPES.has(file.type)) {
-    return NextResponse.json(
-      { error: "Formato inválido. Use JPG, PNG, WEBP ou GIF." },
       { status: 400 }
     );
   }
@@ -70,11 +81,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const sniffedType = sniffImageContentType(bytes);
+  if (!sniffedType) {
+    return NextResponse.json(
+      { error: "Formato inválido. Use JPG, PNG, WEBP ou GIF." },
+      { status: 400 }
+    );
+  }
+
   try {
-    const filename = safeUploadName(file.name || "upload", file.type);
-    const blob = await put(filename, file, {
+    const filename = safeUploadName(file.name || "upload", sniffedType);
+    const blob = await put(filename, Buffer.from(bytes), {
       access: "private",
       addRandomSuffix: true,
+      contentType: sniffedType,
     });
 
     const url = `/api/file?pathname=${encodeURIComponent(blob.pathname)}`;

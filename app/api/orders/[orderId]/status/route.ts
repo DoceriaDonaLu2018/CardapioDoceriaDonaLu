@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { OrderStatus } from "@/lib/orders/constants";
+import { assertMemoryRateLimit } from "@/lib/payments/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,25 @@ export async function GET(
   const parsed = paramsSchema.safeParse({ orderId, token });
   if (!parsed.success) {
     return NextResponse.json({ error: "Requisição inválida." }, { status: 400 });
+  }
+
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown";
+  const pollLimit = assertMemoryRateLimit(
+    `order-status:${parsed.data.token}:${ip}`,
+    40,
+    60 * 1000
+  );
+  if (!pollLimit.ok) {
+    return NextResponse.json(
+      { error: "Muitas consultas. Aguarde um instante." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(pollLimit.retryAfterSec) },
+      }
+    );
   }
 
   const order = await prisma.order.findFirst({

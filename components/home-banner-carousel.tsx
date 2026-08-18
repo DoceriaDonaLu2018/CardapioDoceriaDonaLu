@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { SafeImage } from "@/components/ui/safe-image";
 
 export type HomeBannerSlide = {
   id: string;
@@ -65,7 +65,7 @@ export function HomeBannerCarousel({ banners }: { banners: HomeBannerSlide[] }) 
             {banners.map((banner, index) => {
               const slide = (
                 <div className="relative h-full w-full bg-stone-200">
-                  <Image
+                  <SafeImage
                     src={banner.imageUrl}
                     alt="Promoção Doceria Dona Lu"
                     fill

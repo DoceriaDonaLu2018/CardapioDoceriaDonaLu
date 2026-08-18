@@ -11,7 +11,7 @@ import {
   type BaseRecipeSnapshot,
   type IngredientSnapshot,
 } from "@/lib/ficha-tecnica/engine";
-import { baseRecipeWriteSchema } from "@/lib/validation/safe-input";
+import { baseRecipeWriteSchema, idSchema } from "@/lib/validation/safe-input";
 
 export type BaseRecipeActionState = {
   error?: string;
@@ -279,10 +279,11 @@ export async function deleteBaseRecipe(
     return { error: "Sessão expirada. Faça login novamente." };
   }
 
-  if (!id || id.length < 8) return { error: "Receita inválida." };
+  const parsedId = idSchema.safeParse(id);
+  if (!parsedId.success) return { error: "Receita inválida." };
 
   const usedInSheet = await prisma.technicalSheetLine.count({
-    where: { baseRecipeId: id },
+    where: { baseRecipeId: parsedId.data },
   });
   if (usedInSheet > 0) {
     return {
@@ -292,7 +293,7 @@ export async function deleteBaseRecipe(
   }
 
   const usedInBase = await prisma.baseRecipeItem.count({
-    where: { nestedBaseRecipeId: id },
+    where: { nestedBaseRecipeId: parsedId.data },
   });
   if (usedInBase > 0) {
     return {
@@ -302,7 +303,7 @@ export async function deleteBaseRecipe(
   }
 
   try {
-    await prisma.baseRecipe.delete({ where: { id } });
+    await prisma.baseRecipe.delete({ where: { id: parsedId.data } });
     revalidateFichaPaths();
     return { success: true };
   } catch (error) {

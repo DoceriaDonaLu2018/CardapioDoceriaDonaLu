@@ -49,7 +49,6 @@ export function ReviewForm({ products }: { products: ProductOption[] }) {
         return;
       }
       setVerifiedPhone(result.phone);
-      if (result.customerName) setCustomerName(result.customerName);
       setStep("form");
     });
   }

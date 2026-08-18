@@ -9,6 +9,74 @@ import Credentials from "next-auth/providers/credentials";
  * (ex.: Prisma). O admin é um único usuário definido por variáveis de
  * ambiente, então a autorização não toca no banco.
  */
+/** Sessão administrativa: expiração rígida de 24h. */
+const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
+
+/**
+ * Comparação em tempo constante SEM node:crypto (auth.config é carregado
+ * também no Edge/middleware, onde módulos de Node não estão disponíveis).
+ */
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+function timingSafeEqualBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    mismatch |= a[i] ^ b[i];
+  }
+  return mismatch === 0;
+}
+
+/** PBKDF2-SHA-256 via Web Crypto (Edge-safe). Equaliza tempo e freia brute-force. */
+const PBKDF2_ITERATIONS = 210_000;
+
+async function derivePasswordBits(
+  password: string,
+  pepper: string
+): Promise<Uint8Array> {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: enc.encode(`ddl-admin:${pepper}`),
+      iterations: PBKDF2_ITERATIONS,
+    },
+    keyMaterial,
+    256
+  );
+  return new Uint8Array(bits);
+}
+
+async function passwordMatches(
+  candidate: string,
+  stored: string,
+  pepper: string | undefined
+): Promise<boolean> {
+  if (!pepper) {
+    return constantTimeEquals(candidate, stored);
+  }
+  const [a, b] = await Promise.all([
+    derivePasswordBits(candidate, pepper),
+    derivePasswordBits(stored, pepper),
+  ]);
+  return timingSafeEqualBytes(a, b);
+}
+
 export const authConfig = {
   trustHost: true,
   pages: {
@@ -16,6 +84,10 @@ export const authConfig = {
   },
   session: {
     strategy: "jwt",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  },
+  jwt: {
+    maxAge: SESSION_MAX_AGE_SECONDS,
   },
   providers: [
     Credentials({
@@ -39,10 +111,17 @@ export const authConfig = {
         const email = rawEmail.trim().toLowerCase();
         const password = rawPassword.trim();
 
-        const emailMatches = email === adminEmail.trim().toLowerCase();
-        const passwordMatches = password === adminPassword.trim();
+        const emailMatches = constantTimeEquals(
+          email,
+          adminEmail.trim().toLowerCase()
+        );
+        const passwordOk = await passwordMatches(
+          password,
+          adminPassword.trim(),
+          process.env.AUTH_SECRET?.trim()
+        );
 
-        if (emailMatches && passwordMatches) {
+        if (emailMatches && passwordOk) {
           return {
             id: "admin",
             name: "Administrador",

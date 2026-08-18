@@ -86,20 +86,6 @@ function buildMetrics(row: RawTotals | undefined): PeriodMetrics {
   };
 }
 
-/** Meia-noite do 1º dia do mês civil atual em Brasília, como Date UTC. */
-function getBrasiliaStartOfMonth(reference = new Date()): Date {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: BRASILIA_TZ,
-    year: "numeric",
-    month: "2-digit",
-  }).formatToParts(reference);
-
-  const year = parts.find((p) => p.type === "year")?.value;
-  const month = parts.find((p) => p.type === "month")?.value;
-
-  return new Date(`${year}-${month}-01T03:00:00.000Z`);
-}
-
 /**
  * Uma única varredura de order_items para today / week / month
  * (antes eram 3 queries quase idênticas).
@@ -160,9 +146,11 @@ async function getPeriodMetricsBatch(
   };
 }
 
-/** Top 7 produtos mais vendidos no mês civil atual (quantidade). */
-async function getTopProducts(limit = 7): Promise<TopProduct[]> {
-  const since = getBrasiliaStartOfMonth();
+/** Top 7 produtos mais vendidos no período informado (quantidade). */
+async function getTopProducts(
+  since: Date,
+  limit = 7
+): Promise<TopProduct[]> {
 
   const grouped = await prisma.orderItem.groupBy({
     by: ["productId"],
@@ -377,7 +365,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     paymentBreakdown,
   ] = await Promise.all([
     getPeriodMetricsBatch(startOfToday, startOfWeek, startOfMonth),
-    getTopProducts(7),
+    getTopProducts(startOfMonth, 7),
     getCategorySales(startOfMonth),
     getWeeklyEvolution(startOfWeek),
     getPaymentMethodBreakdown(3),

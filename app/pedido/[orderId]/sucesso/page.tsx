@@ -15,6 +15,9 @@ import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
+// O paymentAccessToken trafega na query; evita vazá-lo via header Referer.
+export const metadata = { referrer: "no-referrer" as const };
+
 interface PageProps {
   params: Promise<{ orderId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -147,6 +150,23 @@ export default async function PedidoSucessoPage({
         `/pedido/${orderId}/pendente?token=${encodeURIComponent(token)}${
           paymentId ? `&payment_id=${encodeURIComponent(paymentId)}` : ""
         }`
+      );
+    }
+
+    const canceled = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        paymentAccessToken: token,
+        source: "ONLINE",
+        status: OrderStatus.CANCELED,
+      },
+      select: { id: true },
+    });
+    if (canceled) {
+      redirect(
+        `/pedido/${orderId}/falha?token=${encodeURIComponent(token)}&motivo=${encodeURIComponent(
+          "Pagamento estornado ou cancelado."
+        )}`
       );
     }
     notFound();

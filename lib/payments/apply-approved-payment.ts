@@ -2,12 +2,78 @@ import { prisma } from "@/lib/prisma";
 import { OrderStatus } from "@/lib/orders/constants";
 import {
   decrementStockOrThrow,
+  incrementStock,
   InsufficientStockError,
 } from "@/lib/inventory/stock";
-import { fetchMercadoPagoPayment } from "@/lib/payments/mercadopago";
+import {
+  fetchMercadoPagoPayment,
+  parseMercadoPagoResourceId,
+} from "@/lib/payments/mercadopago";
 
 function amountsMatch(a: number, b: number): boolean {
   return Math.abs(a - b) < 0.02;
+}
+
+const REFUND_STATUSES = new Set(["refunded", "charged_back"]);
+
+/**
+ * Estorno/chargeback confirmado no gateway: tira da cozinha se ainda está PAID.
+ * COMPLETED (já entregue) não é revertido automaticamente.
+ * Idempotente via updateMany condicional.
+ */
+async function reversePaidOrderIfNeeded(
+  orderId: string,
+  paymentId: string,
+  mpStatus: string
+): Promise<boolean> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      status: true,
+      items: { select: { productId: true, quantity: true } },
+    },
+  });
+
+  if (!order) return false;
+
+  if (order.status === OrderStatus.COMPLETED) {
+    console.error("applyMercadoPagoPaymentId refund after COMPLETED", {
+      orderId,
+      paymentId,
+      mpStatus,
+    });
+    return false;
+  }
+
+  if (order.status === OrderStatus.REQUIRES_REFUND) {
+    const claimed = await prisma.order.updateMany({
+      where: { id: orderId, status: OrderStatus.REQUIRES_REFUND },
+      data: { status: OrderStatus.CANCELED, stockReserved: false },
+    });
+    return claimed.count > 0;
+  }
+
+  if (order.status !== OrderStatus.PAID) return false;
+
+  return prisma.$transaction(async (tx) => {
+    const claimed = await tx.order.updateMany({
+      where: { id: orderId, status: OrderStatus.PAID },
+      data: { status: OrderStatus.CANCELED, stockReserved: false },
+    });
+    if (claimed.count === 0) return false;
+
+    const qtyByProduct = new Map<string, number>();
+    for (const item of order.items) {
+      qtyByProduct.set(
+        item.productId,
+        (qtyByProduct.get(item.productId) ?? 0) + item.quantity
+      );
+    }
+    for (const [productId, quantity] of qtyByProduct) {
+      await incrementStock(tx, productId, quantity);
+    }
+    return true;
+  });
 }
 
 export type ApplyPaymentResult =
@@ -22,6 +88,12 @@ export type ApplyPaymentResult =
       orderId: string;
       paymentId: string;
       productId: string;
+    }
+  | {
+      outcome: "reversed";
+      orderId: string;
+      paymentId: string;
+      status: string;
     };
 
 /**
@@ -35,7 +107,16 @@ export type ApplyPaymentResult =
 export async function applyMercadoPagoPaymentId(
   paymentId: string
 ): Promise<ApplyPaymentResult> {
-  const payment = await fetchMercadoPagoPayment(paymentId);
+  const safePaymentId = parseMercadoPagoResourceId(paymentId);
+  if (!safePaymentId) {
+    return {
+      outcome: "unmatched",
+      paymentId: String(paymentId).slice(0, 32),
+      reason: "payment_id inválido",
+    };
+  }
+
+  const payment = await fetchMercadoPagoPayment(safePaymentId);
   const orderId = payment.externalReference?.trim() || null;
 
   if (payment.status !== "approved") {
@@ -46,6 +127,27 @@ export async function applyMercadoPagoPaymentId(
       "refunded",
       "charged_back",
     ].includes(payment.status);
+
+    if (REFUND_STATUSES.has(payment.status) && orderId) {
+      const reversed = await reversePaidOrderIfNeeded(
+        orderId,
+        payment.id,
+        payment.status
+      );
+      if (reversed) {
+        console.error("applyMercadoPagoPaymentId order reversed (refund/chargeback)", {
+          orderId,
+          paymentId: payment.id,
+          status: payment.status,
+        });
+        return {
+          outcome: "reversed",
+          orderId,
+          paymentId: payment.id,
+          status: payment.status,
+        };
+      }
+    }
 
     return {
       outcome: terminal ? "rejected" : "pending",
@@ -157,6 +259,7 @@ export async function applyMercadoPagoPaymentId(
           paymentId: payment.id,
           paymentMethod: payment.paymentMethodId ?? "checkout_pro",
           paidAt: new Date(),
+          stockReserved: true,
         },
       });
 
@@ -261,16 +364,22 @@ export async function applyMercadoPagoPaymentId(
 export async function fetchMerchantOrderPaymentIds(
   merchantOrderId: string
 ): Promise<string[]> {
+  const safeId = parseMercadoPagoResourceId(merchantOrderId);
+  if (!safeId) {
+    throw new Error("ID de merchant_order inválido.");
+  }
+
   const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
   if (!accessToken) {
     throw new Error("MERCADOPAGO_ACCESS_TOKEN não configurado.");
   }
 
   const response = await fetch(
-    `https://api.mercadopago.com/merchant_orders/${merchantOrderId}`,
+    `https://api.mercadopago.com/merchant_orders/${safeId}`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
+      signal: AbortSignal.timeout(8000),
     }
   );
 
@@ -284,6 +393,6 @@ export async function fetchMerchantOrderPaymentIds(
   }
 
   return (data.payments ?? [])
-    .map((p) => (p.id != null ? String(p.id) : null))
+    .map((p) => parseMercadoPagoResourceId(p.id))
     .filter((id): id is string => Boolean(id));
 }

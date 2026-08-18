@@ -8,7 +8,10 @@ import {
   applyMercadoPagoPaymentId,
   fetchMerchantOrderPaymentIds,
 } from "@/lib/payments/apply-approved-payment";
-import { verifyMercadoPagoWebhookSignature } from "@/lib/payments/mercadopago";
+import {
+  parseMercadoPagoResourceId,
+  verifyMercadoPagoWebhookSignature,
+} from "@/lib/payments/mercadopago";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -86,27 +89,6 @@ async function processPaymentId(paymentId: string): Promise<{
   orderId?: string;
   retryable?: boolean;
 }> {
-  const existing = await prisma.paymentWebhookEvent.findUnique({
-    where: { id: eventKeyForPayment(paymentId) },
-    select: { id: true, orderId: true },
-  });
-
-  // Se já processamos e o pedido está PAID/COMPLETED, não refaz trabalho.
-  if (existing?.orderId) {
-    const order = await prisma.order.findUnique({
-      where: { id: existing.orderId },
-      select: { status: true },
-    });
-    if (
-      order?.status === "PAID" ||
-      order?.status === "COMPLETED" ||
-      order?.status === "REQUIRES_REFUND"
-    ) {
-      return { ok: true, result: "duplicate_paid", orderId: existing.orderId };
-    }
-    // Evento existe mas pedido ainda NÃO está pago → continua (fix do bug).
-  }
-
   let outcome;
   try {
     outcome = await applyMercadoPagoPaymentId(paymentId);
@@ -136,6 +118,14 @@ async function processPaymentId(paymentId: string): Promise<{
         ok: true,
         result: "pending",
         orderId: outcome.orderId ?? undefined,
+      };
+    }
+    case "reversed": {
+      await markPaymentEvent(outcome.paymentId, outcome.orderId, true);
+      return {
+        ok: true,
+        result: "reversed",
+        orderId: outcome.orderId,
       };
     }
     case "rejected": {
@@ -212,14 +202,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ? String(parsedBody.data.id)
         : null;
 
-  const dataId = (queryDataId || bodyDataId || "").trim() || null;
+  const dataIdRaw = (queryDataId || bodyDataId || "").trim() || null;
 
   let signatureOk = false;
   try {
     signatureOk = verifyMercadoPagoWebhookSignature({
       xSignature,
       xRequestId,
-      dataId,
+      dataId: dataIdRaw,
     });
   } catch (error) {
     console.error("webhook signature config:", error);
@@ -232,11 +222,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!signatureOk) {
     console.warn("Webhook MP rejeitado: assinatura inválida.", {
       xRequestId,
-      dataId,
+      dataId: dataIdRaw,
       hasSignature: Boolean(xSignature),
     });
     return NextResponse.json({ error: "Assinatura inválida." }, { status: 401 });
   }
+
+  const dataId = parseMercadoPagoResourceId(dataIdRaw);
 
   const topicRaw =
     request.nextUrl.searchParams.get("type") ||
@@ -252,7 +244,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (isMerchantOrder) {
     if (!dataId) {
-      return NextResponse.json({ error: "merchant_order id ausente." }, { status: 400 });
+      return NextResponse.json({ ok: true, ignored: true, reason: "invalid_id" });
     }
 
     let paymentIds: string[];
@@ -291,7 +283,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!dataId) {
-    return NextResponse.json({ error: "data.id ausente." }, { status: 400 });
+    return NextResponse.json({ ok: true, ignored: true, reason: "invalid_id" });
   }
 
   const processed = await processPaymentId(dataId);

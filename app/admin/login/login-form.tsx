@@ -8,11 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-// Em desenvolvimento, pré-preenche com as credenciais padrão do .env
-// para facilitar o acesso ao painel. Não aparece em produção.
+// Em desenvolvimento, só pré-preenche o e-mail. A senha NUNCA vai no bundle.
 const isDev = process.env.NODE_ENV !== "production";
 const devEmail = isDev ? "admin@doceriadonalu.com" : undefined;
-const devPassword = isDev ? "admin123" : undefined;
 
 export function LoginForm() {
   const [state, formAction, isPending] = useActionState(
@@ -43,15 +41,14 @@ export function LoginForm() {
           type="password"
           placeholder="••••••••"
           autoComplete="current-password"
-          defaultValue={devPassword}
           required
         />
       </div>
 
       {isDev && (
         <p className="rounded-md bg-stone-100 px-3 py-2 text-xs text-stone-500">
-          <strong className="font-medium text-stone-600">Dev:</strong> use{" "}
-          <code>admin@doceriadonalu.com</code> / <code>admin123</code>.
+          Ambiente de desenvolvimento — use o e-mail e a senha definidos em{" "}
+          <code>ADMIN_EMAIL</code> / <code>ADMIN_PASSWORD</code>.
         </p>
       )}
 

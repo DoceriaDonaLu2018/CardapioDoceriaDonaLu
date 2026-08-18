@@ -23,10 +23,23 @@ export function PendingPaymentPoller({ orderId, accessToken }: Props) {
           { signal: controller.signal, cache: "no-store" }
         );
         if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { paid?: boolean };
+        const data = (await res.json()) as { paid?: boolean; status?: string };
         if (data.paid) {
           router.replace(
             `/pedido/${orderId}/sucesso?token=${encodeURIComponent(accessToken)}`
+          );
+          return;
+        }
+        if (
+          data.status === "REQUIRES_REFUND" ||
+          data.status === "CANCELED"
+        ) {
+          const motivo =
+            data.status === "REQUIRES_REFUND"
+              ? "Pagamento recebido, mas o item esgotou. Nossa equipe entrará em contato para reembolso ou ajuste."
+              : "Pedido cancelado";
+          router.replace(
+            `/pedido/${orderId}/falha?token=${encodeURIComponent(accessToken)}&motivo=${encodeURIComponent(motivo)}`
           );
         }
       } catch {

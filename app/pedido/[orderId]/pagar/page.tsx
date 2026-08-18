@@ -47,15 +47,21 @@ export default async function PagarPedidoPage({
     );
   }
 
-  if (order.status === OrderStatus.CANCELED) {
+  if (
+    order.status === OrderStatus.CANCELED ||
+    order.status === OrderStatus.REQUIRES_REFUND
+  ) {
+    const isRefundAlert = order.status === OrderStatus.REQUIRES_REFUND;
     return (
       <div className="flex min-h-screen items-center justify-center bg-stone-50 px-4">
         <div className="max-w-md rounded-2xl border border-stone-200 bg-white p-8 text-center">
           <h1 className="font-serif text-2xl font-bold text-stone-800">
-            Pedido cancelado
+            {isRefundAlert ? "Pagamento em revisão" : "Pedido cancelado"}
           </h1>
           <p className="mt-2 text-stone-500">
-            Este pedido não está mais disponível para pagamento.
+            {isRefundAlert
+              ? "Recebemos o pagamento, mas o item esgotou. Nossa equipe entra em contato para reembolso ou ajuste. Não tente pagar de novo."
+              : "Este pedido não está mais disponível para pagamento."}
           </p>
           <Link
             href="/"

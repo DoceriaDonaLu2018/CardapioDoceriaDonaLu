@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { OrderStatus } from "@/lib/orders/constants";
 import { applyMercadoPagoPaymentId } from "@/lib/payments/apply-approved-payment";
+import { parseMercadoPagoResourceId } from "@/lib/payments/mercadopago";
+import { assertMemoryRateLimit } from "@/lib/payments/rate-limit";
 
 /**
  * Quando o cliente volta do Checkout Pro, o webhook pode atrasar.
@@ -27,18 +29,36 @@ export async function syncOrderPaymentFromGateway(params: {
     throw new Error("Pedido não encontrado.");
   }
 
-  if (
-    order.status === OrderStatus.PAID ||
-    order.status === OrderStatus.COMPLETED
-  ) {
+  if (order.status === OrderStatus.COMPLETED) {
     return { status: "approved", paid: true };
+  }
+
+  if (order.status === OrderStatus.CANCELED) {
+    return { status: "canceled", paid: false };
   }
 
   if (order.status === OrderStatus.REQUIRES_REFUND) {
     return { status: "requires_refund", paid: false };
   }
 
-  const result = await applyMercadoPagoPaymentId(params.paymentId);
+  const safePaymentId = parseMercadoPagoResourceId(params.paymentId);
+  if (!safePaymentId) {
+    throw new Error("Pagamento não corresponde a este pedido.");
+  }
+
+  const syncLimit = assertMemoryRateLimit(
+    `sync-pay:${order.id}`,
+    12,
+    5 * 60 * 1000
+  );
+  if (!syncLimit.ok) {
+    if (order.status === OrderStatus.PAID) {
+      return { status: "approved", paid: true };
+    }
+    return { status: "pending", paid: false };
+  }
+
+  const result = await applyMercadoPagoPaymentId(safePaymentId);
 
   if (result.outcome === "paid" || result.outcome === "already_paid") {
     if (result.orderId !== order.id) {
@@ -61,6 +81,13 @@ export async function syncOrderPaymentFromGateway(params: {
     }
     // Cobrado no gateway, sem estoque — admin precisa estornar.
     return { status: "requires_refund", paid: false };
+  }
+
+  if (result.outcome === "reversed") {
+    if (result.orderId !== order.id) {
+      throw new Error("Pagamento não corresponde a este pedido.");
+    }
+    return { status: result.status, paid: false };
   }
 
   if (result.outcome === "pending" || result.outcome === "rejected") {

@@ -271,21 +271,31 @@ export async function cancelOrder(orderId: string): Promise<OrderActionState> {
       (existing.status === "AWAITING_PAYMENT" && existing.stockReserved);
 
     await prisma.$transaction(async (tx) => {
+      // Compare-and-swap: só um cancelamento vence (evita estoque duplicado).
+      const claimed = await tx.order.updateMany({
+        where: {
+          id: parsedId.data,
+          status: existing.status,
+        },
+        data: { status: "CANCELED", stockReserved: false },
+      });
+      if (claimed.count === 0) {
+        throw new Error("ORDER_ALREADY_CHANGED");
+      }
       if (shouldRestore) {
         for (const item of existing.items) {
           await incrementStock(tx, item.productId, item.quantity);
         }
       }
-      await tx.order.update({
-        where: { id: parsedId.data },
-        data: { status: "CANCELED", stockReserved: false },
-      });
     });
 
     revalidateOrders();
     return { success: true, orderId: parsedId.data };
   } catch (error) {
     console.error("cancelOrder:", error);
+    if (error instanceof Error && error.message === "ORDER_ALREADY_CHANGED") {
+      return { error: "O pedido já foi atualizado. Recarregue a página." };
+    }
     return { error: "Não foi possível cancelar o pedido." };
   }
 }
@@ -340,19 +350,33 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
     // CANCELED: estoque já foi devolvido no cancel — re-baixa ao reabrir.
     if (existing.status === "CANCELED") {
       await prisma.$transaction(async (tx) => {
+        const claimed = await tx.order.updateMany({
+          where: {
+            id: parsedId.data,
+            status: "CANCELED",
+          },
+          data: { status: "PENDING" },
+        });
+        if (claimed.count === 0) {
+          throw new Error("ORDER_ALREADY_CHANGED");
+        }
         for (const item of existing.items) {
           await decrementStockOrThrow(tx, item.productId, item.quantity);
         }
-        await tx.order.update({
-          where: { id: parsedId.data },
-          data: { status: "PENDING" },
-        });
       });
-    } else {
-      await prisma.order.update({
-        where: { id: parsedId.data },
+    } else if (existing.status === "PENDING") {
+      // Já está no PDV — no-op de status, só confirma que ainda é PENDING.
+      const claimed = await prisma.order.updateMany({
+        where: { id: parsedId.data, status: "PENDING" },
         data: { status: "PENDING" },
       });
+      if (claimed.count === 0) {
+        return {
+          error: "O pedido mudou de status. Recarregue a página.",
+        };
+      }
+    } else {
+      return { error: "Este pedido não pode ser reaberto no PDV." };
     }
 
     revalidateOrders();
@@ -364,6 +388,9 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
         error:
           "Não foi possível reabrir: estoque insuficiente para os itens do pedido.",
       };
+    }
+    if (error instanceof Error && error.message === "ORDER_ALREADY_CHANGED") {
+      return { error: "O pedido já foi atualizado. Recarregue a página." };
     }
     return { error: "Não foi possível reabrir o pedido." };
   }
@@ -451,19 +478,41 @@ export async function updateOrder(
   try {
     const existing = await prisma.order.findUnique({
       where: { id: orderId },
-      select: {
-        status: true,
-        items: { select: { productId: true, quantity: true } },
-      },
+      select: { status: true },
     });
     if (!existing) return { error: "Pedido não encontrado." };
-    if (existing.status === "COMPLETED") {
-      return { error: "Pedidos concluídos não podem ser editados." };
+    // Só PENDING retém estoque de forma consistente com o delta abaixo
+    // (increment dos antigos + decrement dos novos). Editar AWAITING_PAYMENT
+    // (estoque não reservado) ou CANCELED (estoque já devolvido) inflaria o
+    // estoque e, no online, colocaria um pedido não pago na cozinha.
+    // Fluxo correto: usar "Reabrir" (reopenOrder) antes de editar.
+    if (existing.status !== "PENDING") {
+      return {
+        error:
+          "Este pedido não pode ser editado diretamente. Use \"Reabrir\" para trazê-lo ao PDV antes de editar.",
+      };
     }
 
     await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM orders
+        WHERE id = ${orderId} AND status = 'PENDING'
+        FOR UPDATE
+      `;
+      if (locked.length === 0) {
+        throw new Error("ORDER_ALREADY_CHANGED");
+      }
+
+      const current = await tx.order.findUnique({
+        where: { id: orderId },
+        select: { items: { select: { productId: true, quantity: true } } },
+      });
+      if (!current) {
+        throw new Error("ORDER_ALREADY_CHANGED");
+      }
+
       // Devolve estoque dos itens antigos e baixa os novos (delta seguro).
-      for (const item of existing.items) {
+      for (const item of current.items) {
         await incrementStock(tx, item.productId, item.quantity);
       }
       for (const item of orderItems) {
@@ -492,6 +541,9 @@ export async function updateOrder(
     console.error("updateOrder:", error);
     if (error instanceof InsufficientStockError) {
       return { error: "Estoque insuficiente para um ou mais itens." };
+    }
+    if (error instanceof Error && error.message === "ORDER_ALREADY_CHANGED") {
+      return { error: "O pedido mudou de status. Recarregue a página." };
     }
     return { error: "Não foi possível atualizar o pedido." };
   }

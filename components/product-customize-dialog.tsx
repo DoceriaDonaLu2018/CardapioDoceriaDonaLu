@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Image from "next/image";
 import { Minus, Plus } from "lucide-react";
 
 import {
@@ -13,6 +12,7 @@ import {
 import { formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { SafeImage } from "@/components/ui/safe-image";
 import {
   Dialog,
   DialogContent,
@@ -136,7 +136,7 @@ export function ProductCustomizeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] w-[min(100%,28rem)] gap-0 overflow-y-auto border-stone-200 bg-white p-0 sm:rounded-2xl">
         <div className="relative aspect-[4/3] w-full overflow-hidden bg-stone-100">
-          <Image
+          <SafeImage
             src={product.imageUrl}
             alt={product.title}
             fill

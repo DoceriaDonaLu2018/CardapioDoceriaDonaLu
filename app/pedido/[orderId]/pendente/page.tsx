@@ -12,6 +12,9 @@ import { PendingPaymentPoller } from "./pending-payment-poller";
 
 export const dynamic = "force-dynamic";
 
+// O paymentAccessToken trafega na query; evita vazá-lo via header Referer.
+export const metadata = { referrer: "no-referrer" as const };
+
 interface PageProps {
   params: Promise<{ orderId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -110,6 +113,14 @@ export default async function PedidoPendentePage({
   if (order.status === OrderStatus.CANCELED) {
     redirect(
       `/pedido/${order.id}/falha?token=${encodeURIComponent(order.paymentAccessToken)}&motivo=${encodeURIComponent("Pedido cancelado")}`
+    );
+  }
+
+  if (order.status === OrderStatus.REQUIRES_REFUND) {
+    redirect(
+      `/pedido/${order.id}/falha?token=${encodeURIComponent(order.paymentAccessToken)}&motivo=${encodeURIComponent(
+        "Pagamento recebido, mas o item esgotou. Nossa equipe entrará em contato para reembolso ou ajuste."
+      )}`
     );
   }
 

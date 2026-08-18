@@ -433,6 +433,23 @@ export async function previewCoupon(
   | { success: true; discountAmount: number; code: string }
   | { success: false; error: string }
 > {
+  const hdrs = await headers();
+  const ip =
+    hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    hdrs.get("x-real-ip") ||
+    "unknown";
+  const couponLimit = assertMemoryRateLimit(
+    `coupon-preview:${ip}`,
+    20,
+    15 * 60 * 1000
+  );
+  if (!couponLimit.ok) {
+    return {
+      success: false,
+      error: `Muitas tentativas de cupom. Aguarde ${couponLimit.retryAfterSec}s.`,
+    };
+  }
+
   const schema = z.object({
     code: z.string().min(1).max(40),
     subtotal: z.number().finite().min(0).max(1_000_000),
@@ -465,6 +482,18 @@ export async function startCheckoutProPayment(
   }
 
   const { paymentChoice } = parsed.data;
+
+  const payLimit = assertMemoryRateLimit(
+    `checkout-pay:${parsed.data.orderId}`,
+    8,
+    15 * 60 * 1000
+  );
+  if (!payLimit.ok) {
+    return {
+      success: false,
+      error: `Muitas tentativas de pagamento. Aguarde ${payLimit.retryAfterSec}s e tente novamente.`,
+    };
+  }
 
   const order = await prisma.order.findFirst({
     where: {
