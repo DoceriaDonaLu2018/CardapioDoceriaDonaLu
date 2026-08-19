@@ -255,6 +255,8 @@ export type MercadoPagoPaymentSnapshot = {
   dateOfExpiration: string | null;
   qrCode: string | null;
   qrCodeBase64: string | null;
+  liveMode: boolean | null;
+  dateApproved: string | null;
 };
 
 /** Reconsulta o pagamento no gateway (fonte da verdade — não confiar só no webhook). */
@@ -281,6 +283,8 @@ export async function fetchMercadoPagoPayment(
     external_reference?: string | null;
     payment_method_id?: string;
     date_of_expiration?: string | null;
+    live_mode?: boolean;
+    date_approved?: string | null;
     point_of_interaction?: {
       transaction_data?: {
         qr_code?: string;
@@ -305,6 +309,8 @@ export async function fetchMercadoPagoPayment(
     dateOfExpiration: data.date_of_expiration ?? null,
     qrCode: tx?.qr_code ?? null,
     qrCodeBase64: tx?.qr_code_base64 ?? null,
+    liveMode: typeof data.live_mode === "boolean" ? data.live_mode : null,
+    dateApproved: data.date_approved ?? null,
   };
 }
 

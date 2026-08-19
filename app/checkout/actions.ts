@@ -402,6 +402,7 @@ export async function createOnlineOrder(
       paymentProvider: "mercadopago",
       paymentAccessToken: accessToken,
       stockReserved: false,
+      releasedToKitchen: false,
       items: {
         create: orderItems.map((item) => ({
           productId: item.productId,

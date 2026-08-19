@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { OrderStatus } from "@/lib/orders/constants";
+import { OrderSource, OrderStatus } from "@/lib/orders/constants";
+import { PaymentAuditEvent, recordPaymentAudit } from "@/lib/payments/audit";
 import {
   decrementStockOrThrow,
   incrementStock,
@@ -52,7 +53,7 @@ async function reversePaidOrderIfNeeded(
   if (order.status === OrderStatus.REQUIRES_REFUND) {
     const claimed = await prisma.order.updateMany({
       where: { id: orderId, status: OrderStatus.REQUIRES_REFUND },
-      data: { status: OrderStatus.CANCELED, stockReserved: false },
+      data: { status: OrderStatus.CANCELED, stockReserved: false, releasedToKitchen: false },
     });
     return claimed.count > 0;
   }
@@ -62,7 +63,7 @@ async function reversePaidOrderIfNeeded(
   return prisma.$transaction(async (tx) => {
     const claimed = await tx.order.updateMany({
       where: { id: orderId, status: OrderStatus.PAID },
-      data: { status: OrderStatus.CANCELED, stockReserved: false },
+      data: { status: OrderStatus.CANCELED, stockReserved: false, releasedToKitchen: false },
     });
     if (claimed.count === 0) return false;
 
@@ -135,6 +136,26 @@ export async function applyMercadoPagoPaymentId(
     });
   });
 
+  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() ?? "";
+  if (accessToken.startsWith("TEST-") && payment.liveMode === true) {
+    console.error("applyMercadoPagoPaymentId live_mode mismatch", {
+      paymentId: payment.id,
+      liveMode: payment.liveMode,
+    });
+    await recordPaymentAudit({
+      event: PaymentAuditEvent.PAYMENT_UNMATCHED,
+      origin: "apply",
+      result: "live_mode incompatível com credencial de teste",
+      orderId,
+      paymentId: payment.id,
+    });
+    return {
+      outcome: "unmatched",
+      paymentId: payment.id,
+      reason: "ambiente de pagamento incompatível",
+    };
+  }
+
   if (payment.status !== "approved") {
     const terminal = [
       "rejected",
@@ -174,6 +195,12 @@ export async function applyMercadoPagoPaymentId(
   }
 
   if (!orderId) {
+    await recordPaymentAudit({
+      event: PaymentAuditEvent.PAYMENT_UNMATCHED,
+      origin: "apply",
+      result: "external_reference ausente",
+      paymentId: payment.id,
+    });
     return {
       outcome: "unmatched",
       paymentId: payment.id,
@@ -186,17 +213,42 @@ export async function applyMercadoPagoPaymentId(
     select: {
       id: true,
       status: true,
+      source: true,
       totalAmount: true,
       paymentId: true,
+      paidAt: true,
       stockReserved: true,
+      releasedToKitchen: true,
     },
   });
 
   if (!order) {
+    await recordPaymentAudit({
+      event: PaymentAuditEvent.PAYMENT_UNMATCHED,
+      origin: "apply",
+      result: "pedido não encontrado",
+      orderId,
+      paymentId: payment.id,
+    });
     return {
       outcome: "unmatched",
       paymentId: payment.id,
       reason: `pedido ${orderId} não encontrado`,
+    };
+  }
+
+  if (order.source !== OrderSource.ONLINE) {
+    await recordPaymentAudit({
+      event: PaymentAuditEvent.PAYMENT_UNMATCHED,
+      origin: "apply",
+      result: "pedido não é ONLINE",
+      orderId: order.id,
+      paymentId: payment.id,
+    });
+    return {
+      outcome: "unmatched",
+      paymentId: payment.id,
+      reason: "pedido não é ONLINE",
     };
   }
 
@@ -207,6 +259,13 @@ export async function applyMercadoPagoPaymentId(
       got: payment.amount,
       paymentId: payment.id,
     });
+    await recordPaymentAudit({
+      event: PaymentAuditEvent.PAYMENT_AMOUNT_MISMATCH,
+      origin: "apply",
+      result: "valor do gateway difere do pedido",
+      orderId: order.id,
+      paymentId: payment.id,
+    });
     return {
       outcome: "amount_mismatch",
       orderId: order.id,
@@ -214,17 +273,54 @@ export async function applyMercadoPagoPaymentId(
     };
   }
 
+  const takenByOther = await prisma.order.findFirst({
+    where: {
+      paymentId: payment.id,
+      id: { not: order.id },
+    },
+    select: { id: true },
+  });
+  if (takenByOther) {
+    await recordPaymentAudit({
+      event: PaymentAuditEvent.PAYMENT_UNMATCHED,
+      origin: "apply",
+      result: "payment_id já vinculado a outro pedido",
+      orderId: order.id,
+      paymentId: payment.id,
+    });
+    return {
+      outcome: "unmatched",
+      paymentId: payment.id,
+      reason: "payment_id já vinculado a outro pedido",
+    };
+  }
+
   if (
     order.status === OrderStatus.PAID ||
     order.status === OrderStatus.COMPLETED
   ) {
-    if (!order.paymentId) {
+    if (order.paymentId && order.paymentId !== payment.id) {
+      await recordPaymentAudit({
+        event: PaymentAuditEvent.PAYMENT_UNMATCHED,
+        origin: "apply",
+        result: "pedido já pago com outro payment_id — não substitui",
+        orderId: order.id,
+        paymentId: payment.id,
+      });
+      return {
+        outcome: "already_paid",
+        orderId: order.id,
+        paymentId: order.paymentId,
+      };
+    }
+    if (!order.paymentId || (order.status === OrderStatus.PAID && !order.releasedToKitchen)) {
       await prisma.order.update({
         where: { id: order.id },
         data: {
           paymentId: payment.id,
           paymentMethod: payment.paymentMethodId ?? undefined,
-          paidAt: new Date(),
+          paidAt: order.paidAt ?? new Date(),
+          releasedToKitchen: order.status === OrderStatus.PAID,
         },
       });
     }
@@ -265,6 +361,13 @@ export async function applyMercadoPagoPaymentId(
   }
 
   if (order.status !== OrderStatus.AWAITING_PAYMENT) {
+    await recordPaymentAudit({
+      event: PaymentAuditEvent.PAYMENT_UNMATCHED,
+      origin: "apply",
+      result: `status ${order.status} não é AWAITING_PAYMENT`,
+      orderId: order.id,
+      paymentId: payment.id,
+    });
     return {
       outcome: "unmatched",
       paymentId: payment.id,
@@ -285,6 +388,7 @@ export async function applyMercadoPagoPaymentId(
           paymentMethod: payment.paymentMethodId ?? "checkout_pro",
           paidAt: new Date(),
           stockReserved: true,
+          releasedToKitchen: true,
         },
       });
 
@@ -387,6 +491,25 @@ export async function applyMercadoPagoPaymentId(
       error: error instanceof Error ? error.message : "unknown",
     });
   }
+
+  await recordPaymentAudit({
+    event: PaymentAuditEvent.PAYMENT_APPROVED,
+    origin: "apply",
+    result: "pagamento confirmado no gateway",
+    orderId: order.id,
+    paymentId: payment.id,
+  });
+  await recordPaymentAudit({
+    event: PaymentAuditEvent.ORDER_RELEASED_TO_KITCHEN,
+    origin: "apply",
+    result: "pedido liberado para cozinha",
+    orderId: order.id,
+    paymentId: payment.id,
+  });
+  console.info("order released to kitchen", {
+    orderId: order.id,
+    paymentId: payment.id,
+  });
 
   return {
     outcome: "paid",

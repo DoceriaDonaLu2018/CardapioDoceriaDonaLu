@@ -1,10 +1,11 @@
 /**
  * Status da state machine de pedidos.
  *
- * REGRA DE OURO (cozinha / painel):
- * - AWAITING_PAYMENT → NUNCA aparece na produção
+ * REGRA DE OURO (cozinha / painel) — a query real está em `kitchenEligibleWhere`:
+ * - AWAITING_PAYMENT → NUNCA aparece na produção (PIX gerado, agendado ou pendente)
  * - REQUIRES_REFUND → pago no gateway mas sem estoque (alerta admin; fora da cozinha)
- * - PAID | PENDING    → prontos para preparo/impressão
+ * - PDV PENDING + releasedToKitchen → balcão
+ * - ONLINE PAID + paymentId + paidAt + releasedToKitchen → online confirmado
  */
 export const OrderStatus = {
   AWAITING_PAYMENT: "AWAITING_PAYMENT",
@@ -19,10 +20,13 @@ export const OrderStatus = {
 export type OrderStatusValue =
   (typeof OrderStatus)[keyof typeof OrderStatus];
 
-/** Pedidos que a cozinha / badge / auto-impressão devem enxergar. */
+/**
+ * Status que *podem* aparecer na cozinha, mas NÃO são suficientes sozinhos.
+ * Sempre combinar com `kitchenEligibleWhere` / `canReleaseOrderToKitchen`.
+ */
 export const KITCHEN_VISIBLE_STATUSES: OrderStatusValue[] = [
   OrderStatus.PENDING, // balcão / PDV
-  OrderStatus.PAID, // checkout online pago (Checkout Pro)
+  OrderStatus.PAID, // checkout online pago — exige paymentId + flag
 ];
 
 export const OrderSource = {

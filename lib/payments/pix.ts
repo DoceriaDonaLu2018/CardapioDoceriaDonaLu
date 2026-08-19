@@ -8,6 +8,7 @@ import {
   createPixPayment,
   mapMercadoPagoError,
 } from "@/lib/payments/mercadopago";
+import { PaymentAuditEvent, recordPaymentAudit } from "@/lib/payments/audit";
 import {
   isPixReusable,
   mapMercadoPagoStatusToPix,
@@ -385,6 +386,21 @@ export async function createPixForOrder(params: {
       orderId: order.id,
       paymentId: created.paymentId,
       expiresAt: created.expiresAt?.toISOString() ?? null,
+    });
+
+    await recordPaymentAudit({
+      event: PaymentAuditEvent.PAYMENT_CREATED,
+      origin: "pix",
+      result: "PIX gerado — pedido permanece AWAITING_PAYMENT",
+      orderId: order.id,
+      paymentId: created.paymentId,
+    });
+    await recordPaymentAudit({
+      event: PaymentAuditEvent.PAYMENT_PENDING,
+      origin: "pix",
+      result: pixStatus,
+      orderId: order.id,
+      paymentId: created.paymentId,
     });
 
     return { ok: true, paid: false, pix: toPublicPix(row, true) };

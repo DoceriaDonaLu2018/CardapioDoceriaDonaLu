@@ -3,13 +3,14 @@ import type { NextRequest } from "next/server";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { KITCHEN_VISIBLE_STATUSES } from "@/lib/orders/constants";
+import { kitchenEligibleWhere } from "@/lib/orders/kitchen";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Short-polling de pedidos prontos para a cozinha.
- * REGRA DE OURO: ignora AWAITING_PAYMENT — só PENDING (PDV) e PAID (online confirmado).
+ * REGRA FAIL CLOSED: PDV PENDING liberado, ou ONLINE PAID com paymentId+paidAt+flag.
+ * AWAITING_PAYMENT / PIX pendente / agendado / rejeitado NUNCA entram.
  *
  * - `?countOnly=1` → só a contagem (badge da sidebar; query leve).
  * - sem param → lista completa (painel de recepção / auto-impressão).
@@ -24,9 +25,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     request.nextUrl.searchParams.get("countOnly") === "1" ||
     request.nextUrl.searchParams.get("countOnly") === "true";
 
-  const kitchenWhere = {
-    status: { in: [...KITCHEN_VISIBLE_STATUSES] },
-  };
+  const kitchenWhere = kitchenEligibleWhere;
 
   try {
     if (countOnly) {

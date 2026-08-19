@@ -5,7 +5,8 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
-import { KITCHEN_VISIBLE_STATUSES } from "@/lib/orders/constants";
+import { OrderSource } from "@/lib/orders/constants";
+import { kitchenEligibleWhere } from "@/lib/orders/kitchen";
 import {
   decrementStockOrThrow,
   incrementStock,
@@ -171,6 +172,7 @@ export async function createOrder(
           totalAmount,
           advancePayment,
           paymentMethod,
+          releasedToKitchen: true,
           items: { create: orderItems },
         },
       });
@@ -217,9 +219,9 @@ export async function completeOrder(orderId: string): Promise<OrderActionState> 
     const result = await prisma.order.updateMany({
       where: {
         id: parsedId.data,
-        status: { in: [...KITCHEN_VISIBLE_STATUSES] },
+        ...kitchenEligibleWhere,
       },
-      data: { status: "COMPLETED" },
+      data: { status: "COMPLETED", releasedToKitchen: false },
     });
 
     if (result.count === 0) {
@@ -277,7 +279,7 @@ export async function cancelOrder(orderId: string): Promise<OrderActionState> {
           id: parsedId.data,
           status: existing.status,
         },
-        data: { status: "CANCELED", stockReserved: false },
+        data: { status: "CANCELED", stockReserved: false, releasedToKitchen: false },
       });
       if (claimed.count === 0) {
         throw new Error("ORDER_ALREADY_CHANGED");
@@ -321,10 +323,17 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
       where: { id: parsedId.data },
       select: {
         status: true,
+        source: true,
         items: { select: { productId: true, quantity: true } },
       },
     });
     if (!existing) return { error: "Pedido não encontrado." };
+    if (existing.source === OrderSource.ONLINE) {
+      return {
+        error:
+          "Pedidos online não podem ser reabertos no PDV. Isso colocaria um pedido não pago na cozinha.",
+      };
+    }
     if (existing.status === "COMPLETED") {
       return { error: "Pedidos concluídos não podem ser reabertos." };
     }
@@ -355,7 +364,7 @@ export async function reopenOrder(orderId: string): Promise<OrderActionState> {
             id: parsedId.data,
             status: "CANCELED",
           },
-          data: { status: "PENDING" },
+          data: { status: "PENDING", releasedToKitchen: true },
         });
         if (claimed.count === 0) {
           throw new Error("ORDER_ALREADY_CHANGED");
@@ -478,9 +487,14 @@ export async function updateOrder(
   try {
     const existing = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { status: true },
+      select: { status: true, source: true },
     });
     if (!existing) return { error: "Pedido não encontrado." };
+    if (existing.source !== OrderSource.PDV) {
+      return {
+        error: "Pedidos online não podem ser editados no PDV.",
+      };
+    }
     // Só PENDING retém estoque de forma consistente com o delta abaixo
     // (increment dos antigos + decrement dos novos). Editar AWAITING_PAYMENT
     // (estoque não reservado) ou CANCELED (estoque já devolvido) inflaria o

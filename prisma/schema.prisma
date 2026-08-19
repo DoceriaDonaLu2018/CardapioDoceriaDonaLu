@@ -296,6 +296,9 @@ model Order {
   // Token opaco para o cliente voltar das back_urls / consultar status (não é secret do gateway).
   paymentAccessToken String?     @unique
   paidAt             DateTime?
+  /// Liberação explícita para a cozinha. Nunca true em pedido online sem pagamento confirmado.
+  /// PDV: true na criação. ONLINE: true somente na transação AWAITING_PAYMENT → PAID.
+  releasedToKitchen  Boolean     @default(false)
   /// Snapshot de cupom aplicado no checkout (recalculado no servidor).
   couponCode         String?
   discountAmount     Float       @default(0)
@@ -312,6 +315,7 @@ model Order {
   @@index([createdAt])
   @@index([status])
   @@index([source])
+  @@index([releasedToKitchen, status, source])
   @@map("orders")
 }
 
@@ -396,6 +400,23 @@ model Payment {
   @@index([orderId, createdAt])
   @@index([orderId, status])
   @@map("payments")
+}
+
+/// Auditoria financeira (append-only). Sem tokens, secrets ou CPF.
+model PaymentAuditLog {
+  id            String   @id @default(cuid())
+  orderId       String?
+  paymentId     String?
+  event         String
+  origin        String
+  result        String
+  correlationId String?
+  createdAt     DateTime @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([paymentId])
+  @@index([event, createdAt])
+  @@map("payment_audit_logs")
 }
 
 /// Idempotência de webhooks: cada evento do gateway é processado no máximo uma vez.
