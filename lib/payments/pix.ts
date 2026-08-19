@@ -1,12 +1,13 @@
-import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { OrderSource, OrderStatus } from "@/lib/orders/constants";
 import {
+  PIX_USER_ERROR,
+  MercadoPagoApiError,
+  buildPixIdempotencyKey,
   cancelMercadoPagoPayment,
   createPixPayment,
-  mapMercadoPagoError,
 } from "@/lib/payments/mercadopago";
 import { PaymentAuditEvent, recordPaymentAudit } from "@/lib/payments/audit";
 import {
@@ -313,7 +314,7 @@ export async function createPixForOrder(params: {
   const payerEmail =
     order.customerEmail?.trim().toLowerCase() || "cliente@doceriadonalu.com";
   const expiresAt = pixExpirationDate();
-  const idempotencyKey = `ddl-pix-${order.id}-${randomUUID()}`;
+  const idempotencyKey = buildPixIdempotencyKey(order.id);
   const shortId = order.id.slice(-8).toUpperCase();
 
   console.info("pix requested", { orderId: order.id });
@@ -332,16 +333,19 @@ export async function createPixForOrder(params: {
       expiresAt,
     });
   } catch (error) {
-    console.error("pix create failed", {
+    const technical =
+      error instanceof Error ? error.message : "unknown";
+    const userMessage =
+      error instanceof MercadoPagoApiError
+        ? error.userMessage
+        : PIX_USER_ERROR;
+    console.error("[MercadoPago][PIX] create failed", {
       orderId: order.id,
-      error: error instanceof Error ? error.message : "unknown",
+      error: technical,
     });
     return {
       ok: false,
-      error:
-        error instanceof Error
-          ? mapMercadoPagoError(error.message)
-          : "Não foi possível gerar o PIX. Tente novamente.",
+      error: userMessage,
       httpStatus: 502,
     };
   }

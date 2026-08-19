@@ -1,11 +1,20 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 
+import { BRASILIA_TZ } from "@/lib/timezone";
+
 /**
  * Cliente Mercado Pago — SOMENTE server-side.
  * Access Token e Webhook Secret NUNCA devem ir para o browser.
  * Checkout Pro: POST /checkout/preferences → redirect init_point.
  * PIX transparente: POST /v1/payments (payment_method_id=pix) → QR no site.
  */
+
+/** Mensagem segura para o cliente quando o PIX não pode ser gerado. */
+export const PIX_USER_ERROR =
+  "Não foi possível gerar o PIX. Tente novamente em alguns instantes.";
+
+/** Limite documentado do header X-Idempotency-Key (Payments / Orders). */
+export const MERCADOPAGO_IDEMPOTENCY_KEY_MAX = 64;
 
 const MP_API = "https://api.mercadopago.com";
 
@@ -37,6 +46,50 @@ function getAccessToken(): string {
     );
   }
   return token;
+}
+
+/** Diagnóstico do token SEM expor o valor. Nunca logar o token completo. */
+export function getMercadoPagoTokenFingerprint(): {
+  tokenConfigured: boolean;
+  tokenPrefix: string;
+  tokenLength: number;
+  environment: "sandbox" | "production" | "unknown";
+} {
+  const token = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() ?? "";
+  const sandbox = token.startsWith("TEST-");
+  const production = token.startsWith("APP_USR-");
+  return {
+    tokenConfigured: token.length > 0,
+    tokenPrefix: sandbox
+      ? "TEST-****"
+      : production
+        ? "APP_USR-****"
+        : token
+          ? "OTHER"
+          : "NONE",
+    tokenLength: token.length,
+    environment: sandbox ? "sandbox" : production ? "production" : "unknown",
+  };
+}
+
+/**
+ * Erro do gateway com mensagem segura para o cliente e detalhes só para log.
+ * `message` permanece técnica (não deve ir para o browser).
+ */
+export class MercadoPagoApiError extends Error {
+  readonly userMessage: string;
+  readonly httpStatus: number;
+
+  constructor(params: {
+    technicalMessage: string;
+    userMessage: string;
+    httpStatus: number;
+  }) {
+    super(params.technicalMessage);
+    this.name = "MercadoPagoApiError";
+    this.userMessage = params.userMessage;
+    this.httpStatus = params.httpStatus;
+  }
 }
 
 function getWebhookSecret(): string {
@@ -91,7 +144,114 @@ export function mapMercadoPagoError(raw: string): string {
   if (msg.includes("public_key") || msg.includes("public key")) {
     return "Public Key do Mercado Pago inválida. Verifique NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY (mesmo modo do Access Token).";
   }
+  if (
+    msg.includes("collector user without key") ||
+    msg.includes("13253")
+  ) {
+    return "A conta Mercado Pago da loja precisa ter uma chave PIX cadastrada para gerar o QR Code.";
+  }
+  if (
+    msg.includes("financial identity") ||
+    msg.includes("financial_identity") ||
+    msg.includes("use case") ||
+    msg.includes("internal_error") ||
+    msg.includes("internal error")
+  ) {
+    return PIX_USER_ERROR;
+  }
   return raw;
+}
+
+/**
+ * Formato exigido pela API de pagamentos:
+ * yyyy-MM-dd'T'HH:mm:ss.000-03:00 (offset, não sufixo Z).
+ * @see https://www.mercadopago.com.br/developers/pt/reference/online-payments/checkout-api-payments/create-payment/post
+ */
+export function formatMercadoPagoExpiration(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BRASILIA_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+
+  const hour = get("hour").padStart(2, "0");
+  return `${get("year")}-${get("month")}-${get("day")}T${hour}:${get("minute")}:${get("second")}.000-03:00`;
+}
+
+/**
+ * Chave de idempotência curta o bastante para o header X-Idempotency-Key (1–64).
+ * Nova chave a cada geração de PIX — reutilizar a pendente é responsabilidade do banco.
+ */
+export function buildPixIdempotencyKey(orderId: string): string {
+  const nonce = randomBytes(8).toString("hex");
+  const safeOrder = orderId.replace(/[^a-zA-Z0-9]/g, "").slice(-24);
+  return `pix${safeOrder}${nonce}`.slice(0, MERCADOPAGO_IDEMPOTENCY_KEY_MAX);
+}
+
+function sanitizePersonName(value: string): string {
+  const cleaned = value.replace(/[^a-zA-ZÀ-ÿ\s'-]/g, " ").replace(/\s+/g, " ").trim();
+  return (cleaned || "Cliente").slice(0, 100);
+}
+
+function pixNotificationUrl(): string | undefined {
+  const url = notificationUrl();
+  if (url.includes("localhost") || url.includes("127.0.0.1")) {
+    return undefined;
+  }
+  return url;
+}
+
+function mercadoPagoRequestId(response: Response): string | null {
+  return (
+    response.headers.get("x-request-id") ||
+    response.headers.get("x-meli-session-id") ||
+    null
+  );
+}
+
+type MercadoPagoCause = {
+  code?: string | number;
+  description?: string;
+  data?: string;
+};
+
+function logPixCreateFailure(params: {
+  orderId: string;
+  httpStatus: number;
+  requestId: string | null;
+  error?: string;
+  message?: string;
+  causes?: MercadoPagoCause[];
+}): void {
+  console.error("[MercadoPago][PIX]", {
+    orderId: params.orderId,
+    httpStatus: params.httpStatus,
+    errorCode: params.error ?? null,
+    message: params.message ?? null,
+    causes: (params.causes ?? []).map((cause) => ({
+      code: cause.code ?? null,
+      description: cause.description ?? null,
+    })),
+    requestId: params.requestId,
+    ...getMercadoPagoTokenFingerprint(),
+  });
+}
+
+export function pixUserMessageFromGateway(raw: string): string {
+  const msg = raw.toLowerCase();
+  if (msg.includes("collector user without key") || msg.includes("13253")) {
+    return mapMercadoPagoError(raw);
+  }
+  return PIX_USER_ERROR;
 }
 
 function notificationUrl(): string {
@@ -326,6 +486,46 @@ export type CreatePixPaymentInput = {
   expiresAt: Date;
 };
 
+/**
+ * Payload oficial do PIX (Payments API) — alinhado ao sample da documentação:
+ * transaction_amount, description, payment_method_id=pix, payer, date_of_expiration.
+ * Sem statement_descriptor (campo de cartão; não consta no sample PIX).
+ */
+export function buildPixPaymentBody(input: CreatePixPaymentInput): {
+  transaction_amount: number;
+  description: string;
+  payment_method_id: "pix";
+  date_of_expiration: string;
+  external_reference: string;
+  notification_url?: string;
+  payer: {
+    email: string;
+    first_name: string;
+    last_name: string;
+    identification: { type: "CPF"; number: string };
+  };
+} {
+  const amount = Math.round(input.amount * 100) / 100;
+  const notification_url = pixNotificationUrl();
+  return {
+    transaction_amount: amount,
+    description: input.description.slice(0, 256),
+    payment_method_id: "pix",
+    date_of_expiration: formatMercadoPagoExpiration(input.expiresAt),
+    external_reference: input.orderId,
+    ...(notification_url ? { notification_url } : {}),
+    payer: {
+      email: input.payerEmail.trim().toLowerCase().slice(0, 254),
+      first_name: sanitizePersonName(input.payerFirstName),
+      last_name: sanitizePersonName(input.payerLastName),
+      identification: {
+        type: "CPF",
+        number: input.cpf.replace(/\D/g, "").slice(0, 11),
+      },
+    },
+  };
+}
+
 export type CreatedPixPayment = {
   paymentId: string;
   status: string;
@@ -348,31 +548,30 @@ export async function createPixPayment(
     throw new Error("Valor do pagamento é inválido.");
   }
 
-  const body = {
-    transaction_amount: amount,
-    description: input.description.slice(0, 256),
-    payment_method_id: "pix",
-    date_of_expiration: input.expiresAt.toISOString(),
-    external_reference: input.orderId,
-    notification_url: notificationUrl(),
-    statement_descriptor: "DONA LU",
-    payer: {
-      email: input.payerEmail,
-      first_name: input.payerFirstName.slice(0, 100),
-      last_name: input.payerLastName.slice(0, 100),
-      identification: {
-        type: "CPF",
-        number: input.cpf,
-      },
-    },
-  };
+  const body = buildPixPaymentBody({ ...input, amount });
+  const idempotencyKey = input.idempotencyKey.slice(
+    0,
+    MERCADOPAGO_IDEMPOTENCY_KEY_MAX
+  );
+
+  console.info("[MercadoPago][PIX] create request", {
+    orderId: input.orderId,
+    amount,
+    expiration: body.date_of_expiration,
+    idempotencyKeyLength: idempotencyKey.length,
+    hasNotificationUrl: Boolean(body.notification_url),
+    payerEmailDomain: body.payer.email.split("@")[1] ?? null,
+    cpfLength: body.payer.identification.number.length,
+    ...getMercadoPagoTokenFingerprint(),
+  });
 
   const response = await fetch(`${MP_API}/v1/payments`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
-      "X-Idempotency-Key": input.idempotencyKey.slice(0, 128),
+      Accept: "application/json",
+      "X-Idempotency-Key": idempotencyKey,
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(MP_CREATE_PIX_TIMEOUT_MS),
@@ -385,7 +584,7 @@ export async function createPixPayment(
     date_of_expiration?: string | null;
     message?: string;
     error?: string;
-    cause?: Array<{ description?: string; code?: string }>;
+    cause?: MercadoPagoCause[];
     point_of_interaction?: {
       transaction_data?: {
         qr_code?: string;
@@ -395,19 +594,25 @@ export async function createPixPayment(
   };
 
   if (!response.ok || data.id == null) {
-    console.error("Mercado Pago create PIX failed:", {
+    const requestId = mercadoPagoRequestId(response);
+    logPixCreateFailure({
       orderId: input.orderId,
+      httpStatus: response.status,
+      requestId,
       error: data.error,
       message: data.message,
-      cause: data.cause?.[0]?.description,
-      httpStatus: response.status,
+      causes: data.cause,
     });
-    const msg =
+    const technical =
       data.cause?.[0]?.description ||
       data.message ||
       data.error ||
       "Falha ao gerar o pagamento PIX.";
-    throw new Error(mapMercadoPagoError(msg));
+    throw new MercadoPagoApiError({
+      technicalMessage: technical,
+      userMessage: pixUserMessageFromGateway(technical),
+      httpStatus: response.status || 502,
+    });
   }
 
   const tx = data.point_of_interaction?.transaction_data;
