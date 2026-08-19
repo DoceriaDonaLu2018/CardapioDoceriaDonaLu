@@ -17,6 +17,7 @@ import { STORE_ADDRESS } from "@/lib/store-info";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MercadoPagoWalletBrick } from "./mercadopago-wallet-brick";
+import { PixPaymentPanel } from "./pix-payment-panel";
 
 type PaymentChoice = "pix" | "card";
 
@@ -44,20 +45,20 @@ export function PaymentCheckoutClient({
   function selectChoice(next: PaymentChoice) {
     setChoice(next);
     setError(null);
-    // Trocar PIX ↔ cartão exige nova preferência.
+    // Trocar para cartão exige nova preferência Checkout Pro.
     setPreferenceId(null);
     setCheckoutUrl(null);
   }
 
   function prepareCheckout() {
-    if (!choice) {
-      setError("Escolha PIX ou cartão para continuar.");
+    if (choice !== "card") {
+      setError("Escolha cartão para continuar no Mercado Pago.");
       return;
     }
 
     if (!publicKey) {
       setError(
-        "Pagamento indisponível: NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY não configurada no Vercel."
+        "Pagamento com cartão indisponível: NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY não configurada no Vercel."
       );
       return;
     }
@@ -67,7 +68,7 @@ export function PaymentCheckoutClient({
       const result = await startCheckoutProPayment({
         orderId,
         accessToken,
-        paymentChoice: choice,
+        paymentChoice: "card",
       });
       if (!result.success) {
         setError(result.error);
@@ -80,7 +81,9 @@ export function PaymentCheckoutClient({
 
   const firstName = customerName.split(" ")[0] || "cliente";
   const shortId = orderId.slice(-8).toUpperCase();
-  const showWallet = Boolean(preferenceId && checkoutUrl && publicKey);
+  const showWallet = Boolean(
+    choice === "card" && preferenceId && checkoutUrl && publicKey
+  );
 
   return (
     <div className="mx-auto max-w-md">
@@ -96,8 +99,8 @@ export function PaymentCheckoutClient({
             Como você quer pagar?
           </h1>
           <p className="mt-3 text-stone-500">
-            Olá, {firstName}. Escolha o meio e pague com o botão oficial do
-            Mercado Pago. Depois você volta automaticamente para cá.
+            Olá, {firstName}. Pague com PIX nesta página ou use cartão no
+            Mercado Pago. Depois a confirmação chega automaticamente.
           </p>
         </div>
 
@@ -125,8 +128,9 @@ export function PaymentCheckoutClient({
             type="button"
             disabled={isPending}
             onClick={() => selectChoice("pix")}
+            aria-pressed={choice === "pix"}
             className={cn(
-              "flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition",
+              "flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coffee-600",
               choice === "pix"
                 ? "border-coffee-600 bg-coffee-50 ring-1 ring-coffee-600"
                 : "border-stone-200 bg-white hover:border-stone-300"
@@ -138,7 +142,7 @@ export function PaymentCheckoutClient({
             <span>
               <span className="block font-semibold text-stone-800">PIX</span>
               <span className="mt-0.5 block text-sm text-stone-500">
-                Pagamento instantâneo no app do seu banco.
+                QR Code e copia e cola aqui no site, sem sair da página.
               </span>
             </span>
           </button>
@@ -147,8 +151,9 @@ export function PaymentCheckoutClient({
             type="button"
             disabled={isPending}
             onClick={() => selectChoice("card")}
+            aria-pressed={choice === "card"}
             className={cn(
-              "flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition",
+              "flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coffee-600",
               choice === "card"
                 ? "border-coffee-600 bg-coffee-50 ring-1 ring-coffee-600"
                 : "border-stone-200 bg-white hover:border-stone-300"
@@ -169,16 +174,25 @@ export function PaymentCheckoutClient({
         </div>
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div
+            role="alert"
+            className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800"
+          >
             {error}
           </div>
         )}
 
         <div className="mt-6 space-y-3">
-          {!showWallet ? (
+          {choice === "pix" ? (
+            <PixPaymentPanel
+              orderId={orderId}
+              accessToken={accessToken}
+              totalAmount={totalAmount}
+            />
+          ) : !showWallet ? (
             <Button
               type="button"
-              disabled={isPending || !choice}
+              disabled={isPending || choice !== "card"}
               onClick={prepareCheckout}
               className="h-12 w-full bg-coffee-600 text-white hover:bg-coffee-700 disabled:opacity-50"
             >
@@ -201,8 +215,9 @@ export function PaymentCheckoutClient({
 
           <p className="flex items-center justify-center gap-1.5 text-center text-xs text-stone-400">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Botão oficial do Mercado Pago (SDK) — dados sensíveis não passam
-            pelo nosso site.
+            {choice === "pix"
+              ? "PIX gerado no servidor. A confirmação vem do Mercado Pago."
+              : "Botão oficial do Mercado Pago (SDK) — dados do cartão não passam pelo nosso site."}
           </p>
           <Button asChild variant="outline" className="h-11 w-full">
             <Link href="/">Voltar ao cardápio</Link>

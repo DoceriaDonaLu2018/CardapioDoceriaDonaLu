@@ -155,12 +155,12 @@ export default async function PedidoFalhaPage({
           <ul className="space-y-2">
             <li className="flex items-start gap-2">
               <QrCode className="mt-0.5 h-4 w-4 shrink-0 text-coffee-600" />
-              <span>Pagar com PIX no Mercado Pago.</span>
+              <span>Pagar com PIX (QR Code nesta página).</span>
             </li>
             <li className="flex items-start gap-2">
               <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-coffee-600" />
               <span>
-                Tentar crédito ou débito na mesma tela do Mercado Pago.
+                Tentar crédito ou débito com segurança no Mercado Pago.
               </span>
             </li>
           </ul>

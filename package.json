@@ -13,7 +13,8 @@
     "db:baseline-ci": "node scripts/prisma-migrate-ci.mjs",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "db:stock-to-one": "tsx scripts/set-stock-to-one.ts"
+    "db:stock-to-one": "tsx scripts/set-stock-to-one.ts",
+    "test": "tsx --test lib/validation/cpf.test.ts lib/payments/pix-status.test.ts lib/payments/mercadopago-webhook.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

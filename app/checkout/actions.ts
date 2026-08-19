@@ -15,6 +15,7 @@ import {
   createPaymentAccessToken,
   mapMercadoPagoError,
 } from "@/lib/payments/mercadopago";
+import { cancelPendingPixForOrder } from "@/lib/payments/pix";
 import { assertMemoryRateLimit } from "@/lib/payments/rate-limit";
 import { getSelectablePickupSlots, getStoreSettings } from "@/lib/store-settings";
 import { checkStoreStatus } from "@/lib/store-status";
@@ -526,6 +527,13 @@ export async function startCheckoutProPayment(
 
   if (order.items.length === 0) {
     return { success: false, error: "Pedido sem itens." };
+  }
+
+  // Evita dois meios ativos: cancela PIX transparente pendente antes do Checkout Pro.
+  try {
+    await cancelPendingPixForOrder(order.id);
+  } catch (error) {
+    console.error("startCheckoutProPayment cancel PIX:", error);
   }
 
   const subtotal = order.items.reduce(

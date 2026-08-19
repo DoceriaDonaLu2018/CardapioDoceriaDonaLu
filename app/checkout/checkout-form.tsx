@@ -575,8 +575,9 @@ export function CheckoutForm({
         </Button>
 
         <p className="text-center text-xs text-stone-400">
-          Na próxima tela você escolhe PIX ou cartão e paga no Mercado Pago. O
-          pedido só vai para a cozinha após a confirmação do pagamento.
+          Na próxima tela você escolhe PIX (QR Code no site) ou cartão no
+          Mercado Pago. O pedido só vai para a cozinha após a confirmação do
+          pagamento.
         </p>
       </aside>
     </form>

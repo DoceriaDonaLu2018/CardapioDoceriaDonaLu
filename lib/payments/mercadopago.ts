@@ -4,12 +4,14 @@ import { createHmac, randomBytes, timingSafeEqual } from "crypto";
  * Cliente Mercado Pago — SOMENTE server-side.
  * Access Token e Webhook Secret NUNCA devem ir para o browser.
  * Checkout Pro: POST /checkout/preferences → redirect init_point.
+ * PIX transparente: POST /v1/payments (payment_method_id=pix) → QR no site.
  */
 
 const MP_API = "https://api.mercadopago.com";
 
 /** Timeout padrão das chamadas ao gateway (evita handler pendurado). */
 const MP_FETCH_TIMEOUT_MS = 8000;
+const MP_CREATE_PIX_TIMEOUT_MS = 12000;
 
 /**
  * IDs de payment / merchant_order do MP são numéricos.
@@ -243,14 +245,22 @@ export async function createCheckoutProPreference(
   };
 }
 
-/** Reconsulta o pagamento no gateway (fonte da verdade — não confiar só no webhook). */
-export async function fetchMercadoPagoPayment(paymentId: string): Promise<{
+export type MercadoPagoPaymentSnapshot = {
   id: string;
   status: string;
+  statusDetail: string | null;
   amount: number;
   externalReference: string | null;
   paymentMethodId: string | null;
-}> {
+  dateOfExpiration: string | null;
+  qrCode: string | null;
+  qrCodeBase64: string | null;
+};
+
+/** Reconsulta o pagamento no gateway (fonte da verdade — não confiar só no webhook). */
+export async function fetchMercadoPagoPayment(
+  paymentId: string
+): Promise<MercadoPagoPaymentSnapshot> {
   const id = parseMercadoPagoResourceId(paymentId);
   if (!id) {
     throw new Error("ID de pagamento inválido.");
@@ -266,22 +276,197 @@ export async function fetchMercadoPagoPayment(paymentId: string): Promise<{
   const data = (await response.json()) as {
     id?: number | string;
     status?: string;
+    status_detail?: string;
     transaction_amount?: number;
     external_reference?: string | null;
     payment_method_id?: string;
+    date_of_expiration?: string | null;
+    point_of_interaction?: {
+      transaction_data?: {
+        qr_code?: string;
+        qr_code_base64?: string;
+      };
+    };
   };
 
   if (!response.ok || data.id == null) {
     throw new Error("Não foi possível validar o pagamento no gateway.");
   }
 
+  const tx = data.point_of_interaction?.transaction_data;
+
   return {
     id: String(data.id),
     status: data.status ?? "",
+    statusDetail: data.status_detail ?? null,
     amount: Number(data.transaction_amount ?? 0),
     externalReference: data.external_reference ?? null,
     paymentMethodId: data.payment_method_id ?? null,
+    dateOfExpiration: data.date_of_expiration ?? null,
+    qrCode: tx?.qr_code ?? null,
+    qrCodeBase64: tx?.qr_code_base64 ?? null,
   };
+}
+
+export type CreatePixPaymentInput = {
+  orderId: string;
+  amount: number;
+  description: string;
+  payerEmail: string;
+  payerFirstName: string;
+  payerLastName: string;
+  cpf: string;
+  idempotencyKey: string;
+  expiresAt: Date;
+};
+
+export type CreatedPixPayment = {
+  paymentId: string;
+  status: string;
+  statusDetail: string | null;
+  qrCode: string;
+  qrCodeBase64: string;
+  expiresAt: Date | null;
+};
+
+/**
+ * PIX transparente: POST /v1/payments.
+ * O valor DEVE vir do pedido no banco — nunca do cliente.
+ */
+export async function createPixPayment(
+  input: CreatePixPaymentInput
+): Promise<CreatedPixPayment> {
+  const token = getAccessToken();
+  const amount = Math.round(input.amount * 100) / 100;
+  if (!Number.isFinite(amount) || amount < 0.01) {
+    throw new Error("Valor do pagamento é inválido.");
+  }
+
+  const body = {
+    transaction_amount: amount,
+    description: input.description.slice(0, 256),
+    payment_method_id: "pix",
+    date_of_expiration: input.expiresAt.toISOString(),
+    external_reference: input.orderId,
+    notification_url: notificationUrl(),
+    statement_descriptor: "DONA LU",
+    payer: {
+      email: input.payerEmail,
+      first_name: input.payerFirstName.slice(0, 100),
+      last_name: input.payerLastName.slice(0, 100),
+      identification: {
+        type: "CPF",
+        number: input.cpf,
+      },
+    },
+  };
+
+  const response = await fetch(`${MP_API}/v1/payments`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "X-Idempotency-Key": input.idempotencyKey.slice(0, 128),
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(MP_CREATE_PIX_TIMEOUT_MS),
+  });
+
+  const data = (await response.json()) as {
+    id?: number | string;
+    status?: string;
+    status_detail?: string;
+    date_of_expiration?: string | null;
+    message?: string;
+    error?: string;
+    cause?: Array<{ description?: string; code?: string }>;
+    point_of_interaction?: {
+      transaction_data?: {
+        qr_code?: string;
+        qr_code_base64?: string;
+      };
+    };
+  };
+
+  if (!response.ok || data.id == null) {
+    console.error("Mercado Pago create PIX failed:", {
+      orderId: input.orderId,
+      error: data.error,
+      message: data.message,
+      cause: data.cause?.[0]?.description,
+      httpStatus: response.status,
+    });
+    const msg =
+      data.cause?.[0]?.description ||
+      data.message ||
+      data.error ||
+      "Falha ao gerar o pagamento PIX.";
+    throw new Error(mapMercadoPagoError(msg));
+  }
+
+  const tx = data.point_of_interaction?.transaction_data;
+  const qrCode = tx?.qr_code?.trim() ?? "";
+  const qrCodeBase64 = tx?.qr_code_base64?.trim() ?? "";
+
+  if (!qrCode || !qrCodeBase64) {
+    console.error("Mercado Pago PIX missing QR payload", {
+      orderId: input.orderId,
+      paymentId: String(data.id),
+      status: data.status,
+    });
+    throw new Error("O Mercado Pago não retornou o QR Code do PIX.");
+  }
+
+  return {
+    paymentId: String(data.id),
+    status: data.status ?? "pending",
+    statusDetail: data.status_detail ?? null,
+    qrCode,
+    qrCodeBase64,
+    expiresAt: data.date_of_expiration
+      ? new Date(data.date_of_expiration)
+      : input.expiresAt,
+  };
+}
+
+/** Cancela um pagamento pendente (PIX expirado / substituído / pedido já pago por outro meio). */
+export async function cancelMercadoPagoPayment(paymentId: string): Promise<void> {
+  const id = parseMercadoPagoResourceId(paymentId);
+  if (!id) return;
+
+  const token = getAccessToken();
+  const response = await fetch(`${MP_API}/v1/payments/${id}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "X-Idempotency-Key": `ddl-cancel-${id}`,
+    },
+    body: JSON.stringify({ status: "cancelled" }),
+    signal: AbortSignal.timeout(MP_FETCH_TIMEOUT_MS),
+  });
+
+  if (response.ok || response.status === 404) return;
+
+  const data = (await response.json()) as {
+    status?: string;
+    message?: string;
+    cause?: Array<{ description?: string; code?: number }>;
+  };
+
+  const alreadyTerminal =
+    data.status === "cancelled" ||
+    data.status === "approved" ||
+    String(data.cause?.[0]?.code ?? "").includes("2000");
+
+  if (alreadyTerminal) return;
+
+  console.warn("Mercado Pago cancel payment failed:", {
+    paymentId: id,
+    httpStatus: response.status,
+    message: data.message,
+    cause: data.cause?.[0]?.description,
+  });
 }
 
 /** Validação criptográfica do webhook Mercado Pago (x-signature). */

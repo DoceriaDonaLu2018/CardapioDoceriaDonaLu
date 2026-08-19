@@ -9,6 +9,10 @@ import {
   fetchMercadoPagoPayment,
   parseMercadoPagoResourceId,
 } from "@/lib/payments/mercadopago";
+import {
+  cancelPendingPixForOrder,
+  syncPixPaymentRecord,
+} from "@/lib/payments/pix";
 
 function amountsMatch(a: number, b: number): boolean {
   return Math.abs(a - b) < 0.02;
@@ -119,6 +123,18 @@ export async function applyMercadoPagoPaymentId(
   const payment = await fetchMercadoPagoPayment(safePaymentId);
   const orderId = payment.externalReference?.trim() || null;
 
+  await syncPixPaymentRecord({
+    providerPaymentId: payment.id,
+    mpStatus: payment.status,
+    statusDetail: payment.statusDetail,
+    orderId,
+  }).catch((error) => {
+    console.error("applyMercadoPagoPaymentId sync PIX record", {
+      paymentId: payment.id,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  });
+
   if (payment.status !== "approved") {
     const terminal = [
       "rejected",
@@ -210,6 +226,15 @@ export async function applyMercadoPagoPaymentId(
           paymentMethod: payment.paymentMethodId ?? undefined,
           paidAt: new Date(),
         },
+      });
+    }
+    try {
+      await cancelPendingPixForOrder(order.id, payment.id);
+    } catch (error) {
+      console.error("applyMercadoPagoPaymentId cancel leftover PIX", {
+        orderId: order.id,
+        paymentId: payment.id,
+        error: error instanceof Error ? error.message : "unknown",
       });
     }
     return {
@@ -351,6 +376,16 @@ export async function applyMercadoPagoPaymentId(
     }
 
     throw error;
+  }
+
+  try {
+    await cancelPendingPixForOrder(order.id, payment.id);
+  } catch (error) {
+    console.error("applyMercadoPagoPaymentId cancel leftover PIX", {
+      orderId: order.id,
+      paymentId: payment.id,
+      error: error instanceof Error ? error.message : "unknown",
+    });
   }
 
   return {

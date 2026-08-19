@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 
 export const metadata = {
   title: "Checkout — Doceria Dona Lu",
-  description: "Finalize seu pedido e pague no Mercado Pago.",
+  description: "Finalize seu pedido e pague com PIX ou cartão.",
 };
 
 export const dynamic = "force-dynamic";

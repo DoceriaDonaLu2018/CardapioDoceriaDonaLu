@@ -17,7 +17,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Webhook Mercado Pago — Checkout Pro.
+ * Webhook Mercado Pago — Checkout Pro e PIX transparente.
+ *
+ * PIX usa o mesmo endpoint e a mesma cadeia:
+ * assinatura → GET /v1/payments/{id} → applyMercadoPagoPaymentId.
+ * Não há uma segunda lógica de produção: AWAITING_PAYMENT → PAID reutiliza o fluxo atual.
  *
  * BUG CRÍTICO CORRIGIDO:
  * Antes gravávamos PaymentWebhookEvent no status `pending`. Quando o MP
@@ -101,6 +105,11 @@ async function processPaymentId(paymentId: string): Promise<{
     case "paid":
     case "already_paid": {
       await markPaymentEvent(outcome.paymentId, outcome.orderId, true);
+      console.info("webhook payment approved applied", {
+        paymentId: outcome.paymentId,
+        orderId: outcome.orderId,
+        result: outcome.outcome,
+      });
       return {
         ok: true,
         result: outcome.outcome,
@@ -174,6 +183,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const xSignature = request.headers.get("x-signature");
   const xRequestId = request.headers.get("x-request-id");
 
+  console.info("webhook received", {
+    xRequestId,
+    hasSignature: Boolean(xSignature),
+  });
+
   // IDs: query (padrão MP) ou body. Legacy IPN: ?id=&topic=
   const queryDataId =
     request.nextUrl.searchParams.get("data.id") ||
@@ -237,6 +251,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     parsedBody.data.topic ||
     "";
   const topic = topicRaw.toLowerCase();
+
+  console.info("webhook validated", {
+    xRequestId,
+    dataId,
+    topic: topic || "payment",
+  });
 
   // Merchant order (Checkout Pro): resolve payment IDs internos.
   const isMerchantOrder =

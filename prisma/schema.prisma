@@ -305,6 +305,8 @@ model Order {
   /// false = legado / PDV (baixa no PENDING ou no pagamento).
   stockReserved      Boolean     @default(false)
   items              OrderItem[]
+  /// Tentativas de pagamento PIX (Checkout Pro não grava aqui).
+  payments           Payment[]
   createdAt          DateTime    @default(now())
 
   @@index([createdAt])
@@ -366,6 +368,34 @@ model Gift {
   updatedAt        DateTime @updatedAt
 
   @@index([isActive, minPurchaseValue])
+}
+
+/// Pagamento PIX transparente (Checkout API). Checkout Pro continua só em Order.paymentId.
+/// Um pedido pode ter várias tentativas (expiradas/canceladas); no máximo um `pending` ativo
+/// (índice parcial na migration).
+model Payment {
+  id                String   @id @default(cuid())
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider          String // mercadopago
+  providerPaymentId String   @unique
+  method            String // pix
+  status            String // pending | approved | expired | cancelled | rejected | refunded
+  statusDetail      String?
+  amount            Float
+  externalReference String
+  /// EMV PIX Copia e Cola (não é secret do gateway).
+  qrCode            String?  @db.Text
+  /// PNG do QR retornado pelo MP — só para exibir no site; não logar.
+  qrCodeBase64      String?  @db.Text
+  expiresAt         DateTime?
+  approvedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([orderId, createdAt])
+  @@index([orderId, status])
+  @@map("payments")
 }
 
 /// Idempotência de webhooks: cada evento do gateway é processado no máximo uma vez.
