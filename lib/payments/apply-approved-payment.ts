@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { OrderSource, OrderStatus } from "@/lib/orders/constants";
 import { PaymentAuditEvent, recordPaymentAudit } from "@/lib/payments/audit";
+import { logPaymentEvent, PaymentLogEvent } from "@/lib/payments/events";
 import {
   decrementStockOrThrow,
   incrementStock,
@@ -123,6 +124,12 @@ export async function applyMercadoPagoPaymentId(
 
   const payment = await fetchMercadoPagoPayment(safePaymentId);
   const orderId = payment.externalReference?.trim() || null;
+  logPaymentEvent(PaymentLogEvent.PAYMENT_FETCHED, {
+    orderId,
+    paymentId: payment.id,
+    status: payment.status,
+    result: payment.statusDetail,
+  });
 
   await syncPixPaymentRecord({
     providerPaymentId: payment.id,
@@ -185,6 +192,17 @@ export async function applyMercadoPagoPaymentId(
         };
       }
     }
+
+    logPaymentEvent(
+      terminal ? PaymentLogEvent.PAYMENT_VALIDATED : PaymentLogEvent.PAYMENT_PENDING,
+      {
+        orderId,
+        paymentId: payment.id,
+        status: payment.status,
+        result: terminal ? "not_approved_terminal" : "not_approved_pending",
+      },
+      terminal ? "warn" : "info"
+    );
 
     return {
       outcome: terminal ? "rejected" : "pending",
@@ -375,6 +393,13 @@ export async function applyMercadoPagoPaymentId(
     };
   }
 
+  logPaymentEvent(PaymentLogEvent.PAYMENT_VALIDATED, {
+    orderId: order.id,
+    paymentId: payment.id,
+    status: payment.status,
+    result: "id_amount_reference_ok",
+  });
+
   try {
     await prisma.$transaction(async (tx) => {
       const updated = await tx.order.updateMany({
@@ -505,6 +530,22 @@ export async function applyMercadoPagoPaymentId(
     result: "pedido liberado para cozinha",
     orderId: order.id,
     paymentId: payment.id,
+  });
+  logPaymentEvent(PaymentLogEvent.PAYMENT_APPROVED, {
+    orderId: order.id,
+    paymentId: payment.id,
+    status: "approved",
+  });
+  logPaymentEvent(PaymentLogEvent.ORDER_PAYMENT_CONFIRMED, {
+    orderId: order.id,
+    paymentId: payment.id,
+    status: OrderStatus.PAID,
+  });
+  logPaymentEvent(PaymentLogEvent.ORDER_RELEASED_TO_KITCHEN, {
+    orderId: order.id,
+    paymentId: payment.id,
+    status: OrderStatus.PAID,
+    result: "releasedToKitchen=true",
   });
   console.info("order released to kitchen", {
     orderId: order.id,

@@ -10,6 +10,7 @@ import {
   createPixPayment,
 } from "@/lib/payments/mercadopago";
 import { PaymentAuditEvent, recordPaymentAudit } from "@/lib/payments/audit";
+import { logPaymentEvent, PaymentLogEvent } from "@/lib/payments/events";
 import {
   isPixReusable,
   mapMercadoPagoStatusToPix,
@@ -318,6 +319,10 @@ export async function createPixForOrder(params: {
   const shortId = order.id.slice(-8).toUpperCase();
 
   console.info("pix requested", { orderId: order.id });
+  logPaymentEvent(PaymentLogEvent.PIX_CREATE_STARTED, {
+    orderId: order.id,
+    status: OrderStatus.AWAITING_PAYMENT,
+  });
 
   let created;
   try {
@@ -343,6 +348,15 @@ export async function createPixForOrder(params: {
       orderId: order.id,
       error: technical,
     });
+    logPaymentEvent(
+      PaymentLogEvent.PIX_CREATE_FAILED,
+      {
+        orderId: order.id,
+        status: "failed",
+        result: technical.slice(0, 240),
+      },
+      "error"
+    );
     return {
       ok: false,
       error: userMessage,
@@ -390,6 +404,12 @@ export async function createPixForOrder(params: {
       orderId: order.id,
       paymentId: created.paymentId,
       expiresAt: created.expiresAt?.toISOString() ?? null,
+    });
+    logPaymentEvent(PaymentLogEvent.PIX_CREATE_SUCCESS, {
+      orderId: order.id,
+      paymentId: created.paymentId,
+      status: pixStatus,
+      result: "QR gerado — pedido permanece AWAITING_PAYMENT",
     });
 
     await recordPaymentAudit({

@@ -12,6 +12,7 @@ import {
   parseMercadoPagoResourceId,
   verifyMercadoPagoWebhookSignature,
 } from "@/lib/payments/mercadopago";
+import { logPaymentEvent, PaymentLogEvent } from "@/lib/payments/events";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -187,6 +188,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     xRequestId,
     hasSignature: Boolean(xSignature),
   });
+  logPaymentEvent(PaymentLogEvent.PAYMENT_WEBHOOK_RECEIVED, {
+    requestId: xRequestId,
+    result: xSignature ? "has_signature" : "missing_signature",
+  });
 
   // IDs: query (padrão MP) ou body. Legacy IPN: ?id=&topic=
   const queryDataId =
@@ -239,6 +244,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       dataId: dataIdRaw,
       hasSignature: Boolean(xSignature),
     });
+    logPaymentEvent(
+      PaymentLogEvent.PAYMENT_WEBHOOK_REJECTED,
+      {
+        requestId: xRequestId,
+        paymentId: dataIdRaw,
+        result: "invalid_signature",
+      },
+      "warn"
+    );
     return NextResponse.json({ error: "Assinatura inválida." }, { status: 401 });
   }
 
@@ -256,6 +270,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     xRequestId,
     dataId,
     topic: topic || "payment",
+  });
+  logPaymentEvent(PaymentLogEvent.PAYMENT_WEBHOOK_VALIDATED, {
+    requestId: xRequestId,
+    paymentId: dataId,
+    status: topic || "payment",
   });
 
   // Merchant order (Checkout Pro): resolve payment IDs internos.
