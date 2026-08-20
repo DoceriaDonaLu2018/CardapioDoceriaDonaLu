@@ -20,7 +20,10 @@ import {
   completeOrder,
   reopenOrder,
 } from "@/app/admin/pedidos/actions";
+import { getNotificationSoundConfig } from "@/app/admin/configuracoes/actions";
+import { useNotificationSound } from "@/hooks/use-notification-sound";
 import { usePendingOrders } from "@/hooks/use-pending-orders";
+import { SoundNotificationControls } from "@/components/admin/sound-notification-controls";
 import { canPrintOnCashierPc } from "@/lib/print";
 import { toKitchenReceiptData, type KitchenReceiptData } from "@/lib/receipt";
 import { formatOrderId } from "@/lib/order-period";
@@ -67,14 +70,43 @@ function formatWaitTime(createdAtISO: string, now: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}min`;
 }
 
-export function PedidosBoard() {
+type PedidosBoardProps = {
+  notificationSoundEnabled: boolean;
+  notificationSoundUrl: string | null;
+};
+
+export function PedidosBoard({
+  notificationSoundEnabled,
+  notificationSoundUrl,
+}: PedidosBoardProps) {
   // Trava de interação: o polling e a auto-impressão só rodam após o
   // atendente clicar no botão (gesto de usuário exigido pelo navegador).
   const [isAutoPrintEnabled, setIsAutoPrintEnabled] = useState(false);
+  const [storeSoundEnabled, setStoreSoundEnabled] = useState(
+    notificationSoundEnabled
+  );
+  const [storeSoundUrl, setStoreSoundUrl] = useState(notificationSoundUrl);
   const router = useRouter();
 
   const { orders, isLoading, refresh, requiresRefundCount } =
     usePendingOrders(isAutoPrintEnabled);
+
+  const {
+    isEnabled: isSoundEnabled,
+    volume: soundVolume,
+    enableSound,
+    disableSound,
+    setVolume: setSoundVolume,
+    testSound,
+    unlockAudio,
+    acknowledgeOrders,
+    notifyNewOrders,
+  } = useNotificationSound({
+    storeEnabled: storeSoundEnabled,
+    customSoundUrl: storeSoundUrl,
+  });
+
+  const soundPrimedRef = useRef(false);
 
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -118,6 +150,29 @@ export function PedidosBoard() {
     isPrintingRef.current = true;
     setReceiptToPrint(next);
   }, []);
+
+  // Detecta novos pedidos no MESMO snapshot do polling da recepção.
+  // Sem segunda subscription: o áudio reutiliza `orders` já obtido.
+  // O primeiro payload só marca os IDs (pedidos que já estavam na fila).
+  useEffect(() => {
+    if (!isAutoPrintEnabled) return;
+    if (isLoading) return;
+
+    const ids = orders.map((order) => order.id);
+    if (!soundPrimedRef.current) {
+      acknowledgeOrders(ids);
+      soundPrimedRef.current = true;
+      return;
+    }
+
+    notifyNewOrders(ids);
+  }, [
+    orders,
+    isAutoPrintEnabled,
+    isLoading,
+    acknowledgeOrders,
+    notifyNewOrders,
+  ]);
 
   // Detecta novos pedidos vindos do polling e os enfileira para impressão.
   useEffect(() => {
@@ -202,10 +257,36 @@ export function PedidosBoard() {
   function handleEnable() {
     // Este clique é o "User Gesture" exigido pelo navegador. A partir dele, os
     // disparos automáticos de window.print() na aba ativa deixam de ser
-    // bloqueados pela política anti-popup do Chrome.
+    // bloqueados pela política anti-popup do Chrome. Também retoma o
+    // AudioContext se o alerta sonoro já estiver ativado.
     setToast(null);
     setIsAutoPrintEnabled(true);
+    if (isSoundEnabled) {
+      void unlockAudio().catch((error) => {
+        console.error("notification sound: falha ao desbloquear no início da recepção", error);
+      });
+    }
+    void getNotificationSoundConfig()
+      .then((config) => {
+        setStoreSoundEnabled(config.enabled);
+        setStoreSoundUrl(config.url);
+      })
+      .catch((error) => {
+        console.error("notification sound: falha ao atualizar configuração da loja", error);
+      });
   }
+
+  const soundControls = (
+    <SoundNotificationControls
+      isEnabled={isSoundEnabled}
+      volume={soundVolume}
+      storeEnabled={storeSoundEnabled}
+      onEnable={enableSound}
+      onDisable={disableSound}
+      onVolumeChange={setSoundVolume}
+      onTest={testSound}
+    />
+  );
 
   const visibleOrders = orders.filter((order) => !hiddenIds.has(order.id));
 
@@ -309,6 +390,7 @@ export function PedidosBoard() {
             </p>
           )}
         </div>
+        {soundControls}
       </>
     );
   }
@@ -342,6 +424,8 @@ export function PedidosBoard() {
           Pausar
         </button>
       </div>
+
+      {soundControls}
 
       {requiresRefundCount > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">

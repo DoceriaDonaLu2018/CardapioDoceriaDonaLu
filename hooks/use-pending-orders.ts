@@ -107,6 +107,7 @@ export function usePendingOrders(
       return;
     }
 
+    setIsLoading(true);
     refresh();
     const id = window.setInterval(refresh, intervalMs);
 

@@ -1,7 +1,10 @@
+import { getStoreSettings } from "@/lib/store-settings";
 import { PedidosBoard } from "./pedidos-board";
 
-/** Dados vêm do client polling — sem force-dynamic desnecessário. */
-export default function PedidosPage() {
+export const dynamic = "force-dynamic";
+export default async function PedidosPage() {
+  const settings = await getStoreSettings();
+
   return (
     <div className="space-y-6">
       <div>
@@ -14,7 +17,10 @@ export default function PedidosPage() {
         </p>
       </div>
 
-      <PedidosBoard />
+      <PedidosBoard
+        notificationSoundEnabled={settings.notificationSoundEnabled}
+        notificationSoundUrl={settings.notificationSoundUrl}
+      />
     </div>
   );
 }

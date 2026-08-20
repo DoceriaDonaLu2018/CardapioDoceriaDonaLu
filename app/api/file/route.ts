@@ -3,6 +3,7 @@ import { get } from "@vercel/blob";
 
 import { ALLOWED_IMAGE_CONTENT_TYPES } from "@/lib/images";
 import { blobPathnameSchema } from "@/lib/validation/safe-input";
+import { NOTIFICATION_SOUND_MIME } from "@/lib/audio/mp3";
 
 const FILE_SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -11,12 +12,18 @@ const FILE_SECURITY_HEADERS = {
   "Cache-Control": "public, max-age=0, must-revalidate",
 } as const;
 
+const ALLOWED_SERVED_CONTENT_TYPES = new Set([
+  ...ALLOWED_IMAGE_CONTENT_TYPES,
+  NOTIFICATION_SOUND_MIME,
+]);
+
 function contentTypeFromPathname(pathname: string): string | null {
   const lower = pathname.toLowerCase();
   if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
   if (lower.endsWith(".png")) return "image/png";
   if (lower.endsWith(".webp")) return "image/webp";
   if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".mp3")) return NOTIFICATION_SOUND_MIME;
   return null;
 }
 
@@ -44,7 +51,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
 
     if (!result) {
-      return new NextResponse("Imagem não encontrada.", { status: 404 });
+      return new NextResponse("Arquivo não encontrado.", { status: 404 });
     }
 
     if (result.statusCode === 304) {
@@ -65,11 +72,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const contentType =
       rawType === "image/jpg"
         ? "image/jpeg"
-        : ALLOWED_IMAGE_CONTENT_TYPES.has(rawType)
+        : ALLOWED_SERVED_CONTENT_TYPES.has(rawType)
           ? rawType
           : fromPath;
 
-    if (!contentType || !ALLOWED_IMAGE_CONTENT_TYPES.has(contentType)) {
+    if (!contentType || !ALLOWED_SERVED_CONTENT_TYPES.has(contentType)) {
       return NextResponse.json(
         { error: "Tipo de arquivo não permitido." },
         { status: 415 }

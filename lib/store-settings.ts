@@ -6,6 +6,7 @@ import {
   STORE_HOURS,
   STORE_HOURS_LABEL as FALLBACK_HOURS_LABEL,
 } from "@/lib/store-info";
+import { sanitizeNotificationSoundSrc } from "@/lib/audio/mp3";
 
 export const TIME_HHMM = z
   .string()
@@ -58,6 +59,11 @@ export type StoreSettingsData = {
   advanceNoticeDays: number;
   allowedPreOrderDays: number[];
   operatingHours: OperatingHoursMap | null;
+  notificationSoundEnabled: boolean;
+  notificationSoundUrl: string | null;
+  notificationSoundName: string | null;
+  notificationSoundSize: number | null;
+  notificationSoundUpdatedAt: string | null;
 };
 
 const DEFAULTS: StoreSettingsData = {
@@ -68,6 +74,11 @@ const DEFAULTS: StoreSettingsData = {
   advanceNoticeDays: 0,
   allowedPreOrderDays: [1, 2, 3, 4, 5, 6],
   operatingHours: null,
+  notificationSoundEnabled: true,
+  notificationSoundUrl: null,
+  notificationSoundName: null,
+  notificationSoundSize: null,
+  notificationSoundUpdatedAt: null,
 };
 
 function timeToMinutes(value: string): number {
@@ -117,6 +128,15 @@ export async function getStoreSettings(): Promise<StoreSettingsData> {
           ? row.allowedPreOrderDays
           : DEFAULTS.allowedPreOrderDays,
       operatingHours: parseOperatingHours(row.operatingHours),
+      notificationSoundEnabled: row.notificationSoundEnabled ?? true,
+      notificationSoundUrl: sanitizeNotificationSoundSrc(
+        row.notificationSoundUrl
+      ),
+      notificationSoundName: row.notificationSoundName,
+      notificationSoundSize: row.notificationSoundSize,
+      notificationSoundUpdatedAt: row.notificationSoundUpdatedAt
+        ? row.notificationSoundUpdatedAt.toISOString()
+        : null,
     };
   } catch (error) {
     console.error("getStoreSettings:", error);

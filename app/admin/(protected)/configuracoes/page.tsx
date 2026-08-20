@@ -13,8 +13,8 @@ export default async function ConfiguracoesPage() {
           Configurações
         </h1>
         <p className="mt-1 text-stone-500">
-          Defina o horário de funcionamento e os intervalos de retirada
-          disponíveis no checkout.
+          Defina o horário de funcionamento, os intervalos de retirada e o som
+          de notificação da recepção.
         </p>
       </div>
 

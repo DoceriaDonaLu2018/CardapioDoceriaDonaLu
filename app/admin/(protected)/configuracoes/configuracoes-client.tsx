@@ -8,6 +8,7 @@ import type { StoreSettingsData } from "@/lib/store-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NotificationSoundSettings } from "./notification-sound-settings";
 
 const SUGGESTED_SLOTS = [
   "12:00",
@@ -108,7 +109,8 @@ export function ConfiguracoesClient({
   }
 
   return (
-    <form onSubmit={handleSave} className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-8">
+      <form onSubmit={handleSave} className="space-y-8">
       {error && (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
@@ -333,5 +335,8 @@ export function ConfiguracoesClient({
         )}
       </Button>
     </form>
+
+      <NotificationSoundSettings initial={initial} />
+    </div>
   );
 }
