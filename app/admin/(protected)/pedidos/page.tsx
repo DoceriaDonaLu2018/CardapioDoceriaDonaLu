@@ -1,9 +1,13 @@
+import { getReceptionSnapshot } from "@/lib/reception";
 import { getStoreSettings } from "@/lib/store-settings";
 import { PedidosBoard } from "./pedidos-board";
 
 export const dynamic = "force-dynamic";
 export default async function PedidosPage() {
-  const settings = await getStoreSettings();
+  const [settings, reception] = await Promise.all([
+    getStoreSettings(),
+    getReceptionSnapshot(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -20,6 +24,7 @@ export default async function PedidosPage() {
       <PedidosBoard
         notificationSoundEnabled={settings.notificationSoundEnabled}
         notificationSoundUrl={settings.notificationSoundUrl}
+        initialReception={reception}
       />
     </div>
   );

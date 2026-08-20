@@ -18,7 +18,9 @@ import { useRouter } from "next/navigation";
 import {
   cancelOrder,
   completeOrder,
+  endReception,
   reopenOrder,
+  startReception,
 } from "@/app/admin/pedidos/actions";
 import { getNotificationSoundConfig } from "@/app/admin/configuracoes/actions";
 import { useNotificationSound } from "@/hooks/use-notification-sound";
@@ -28,6 +30,7 @@ import { canPrintOnCashierPc } from "@/lib/print";
 import { toKitchenReceiptData, type KitchenReceiptData } from "@/lib/receipt";
 import { formatOrderId } from "@/lib/order-period";
 import { PICKUP_FULFILLMENT_LABEL } from "@/lib/orders/constants";
+import type { ReceptionSnapshot } from "@/lib/reception";
 import { formatPhone, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -73,23 +76,25 @@ function formatWaitTime(createdAtISO: string, now: number): string {
 type PedidosBoardProps = {
   notificationSoundEnabled: boolean;
   notificationSoundUrl: string | null;
+  initialReception: ReceptionSnapshot;
 };
 
 export function PedidosBoard({
   notificationSoundEnabled,
   notificationSoundUrl,
+  initialReception,
 }: PedidosBoardProps) {
-  // Trava de interação: o polling e a auto-impressão só rodam após o
-  // atendente clicar no botão (gesto de usuário exigido pelo navegador).
   const [isAutoPrintEnabled, setIsAutoPrintEnabled] = useState(false);
+  const [reception, setReception] = useState(initialReception);
+  const wasReceptionOpenRef = useRef(initialReception.isOpen);
   const [storeSoundEnabled, setStoreSoundEnabled] = useState(
     notificationSoundEnabled
   );
   const [storeSoundUrl, setStoreSoundUrl] = useState(notificationSoundUrl);
   const router = useRouter();
 
-  const { orders, isLoading, refresh, requiresRefundCount } =
-    usePendingOrders(isAutoPrintEnabled);
+  const { orders, isLoading, refresh, requiresRefundCount, reception: polledReception } =
+    usePendingOrders(true);
 
   const {
     isEnabled: isSoundEnabled,
@@ -151,11 +156,26 @@ export function PedidosBoard({
     setReceiptToPrint(next);
   }, []);
 
+  useEffect(() => {
+    if (!polledReception) return;
+
+    if (wasReceptionOpenRef.current && !polledReception.isOpen) {
+      setIsAutoPrintEnabled(false);
+      if (polledReception.closedReason === "SCHEDULE") {
+        setToast(
+          "Horário de funcionamento encerrado. A recepção foi fechada automaticamente."
+        );
+      }
+    }
+    wasReceptionOpenRef.current = polledReception.isOpen;
+    setReception(polledReception);
+  }, [polledReception]);
+
   // Detecta novos pedidos no MESMO snapshot do polling da recepção.
   // Sem segunda subscription: o áudio reutiliza `orders` já obtido.
   // O primeiro payload só marca os IDs (pedidos que já estavam na fila).
   useEffect(() => {
-    if (!isAutoPrintEnabled) return;
+    if (!reception.isOpen) return;
     if (isLoading) return;
 
     const ids = orders.map((order) => order.id);
@@ -168,7 +188,7 @@ export function PedidosBoard({
     notifyNewOrders(ids);
   }, [
     orders,
-    isAutoPrintEnabled,
+    reception.isOpen,
     isLoading,
     acknowledgeOrders,
     notifyNewOrders,
@@ -255,25 +275,54 @@ export function PedidosBoard({
   }, [processQueue]);
 
   function handleEnable() {
-    // Este clique é o "User Gesture" exigido pelo navegador. A partir dele, os
-    // disparos automáticos de window.print() na aba ativa deixam de ser
-    // bloqueados pela política anti-popup do Chrome. Também retoma o
-    // AudioContext se o alerta sonoro já estiver ativado.
     setToast(null);
-    setIsAutoPrintEnabled(true);
-    if (isSoundEnabled) {
-      void unlockAudio().catch((error) => {
-        console.error("notification sound: falha ao desbloquear no início da recepção", error);
-      });
+    setError(null);
+    startTransition(async () => {
+      const result = await startReception();
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      if (result.snapshot) {
+        setReception(result.snapshot);
+        wasReceptionOpenRef.current = result.snapshot.isOpen;
+      }
+      setIsAutoPrintEnabled(true);
+      if (isSoundEnabled) {
+        void unlockAudio().catch((error) => {
+          console.error(
+            "notification sound: falha ao desbloquear no início da recepção",
+            error
+          );
+        });
+      }
+      void getNotificationSoundConfig()
+        .then((config) => {
+          setStoreSoundEnabled(config.enabled);
+          setStoreSoundUrl(config.url);
+        })
+        .catch((error) => {
+          console.error(
+            "notification sound: falha ao atualizar configuração da loja",
+            error
+          );
+        });
+    });
+  }
+
+  async function handleEndReception() {
+    setError(null);
+    const result = await endReception();
+    if (result.error) {
+      setError(result.error);
+      return result;
     }
-    void getNotificationSoundConfig()
-      .then((config) => {
-        setStoreSoundEnabled(config.enabled);
-        setStoreSoundUrl(config.url);
-      })
-      .catch((error) => {
-        console.error("notification sound: falha ao atualizar configuração da loja", error);
-      });
+    if (result.snapshot) {
+      setReception(result.snapshot);
+      wasReceptionOpenRef.current = false;
+    }
+    setIsAutoPrintEnabled(false);
+    return result;
   }
 
   const soundControls = (
@@ -354,76 +403,95 @@ export function PedidosBoard({
     </div>
   ) : null;
 
-  // Estado ocioso: enquanto a recepção não é ativada, escondemos a lista e
-  // exibimos a chamada para o clique inicial (que libera a impressão).
-  if (!isAutoPrintEnabled) {
-    return (
-      <>
-        {Toast}
-        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-stone-300 bg-white py-16 text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-coffee-100 text-coffee-700">
-            <Printer className="h-7 w-7" />
-          </span>
-          <div>
-            <p className="text-lg font-semibold text-stone-800">
-              Recepção de pedidos pausada
-            </p>
-            <p className="mx-auto mt-1 max-w-md text-sm text-stone-500">
-              Ative para começar a receber e imprimir os pedidos
-              automaticamente. Este clique é necessário para o navegador liberar
-              a impressão sem bloqueios.
-            </p>
-          </div>
-          <Button
-            type="button"
-            onClick={handleEnable}
-            size="lg"
-            className="bg-coffee-600 text-base text-white hover:bg-coffee-700"
-          >
-            <Play className="h-5 w-5" />
-            Iniciar Recepção de Pedidos
-          </Button>
-          {!canAutoPrint && (
-            <p className="max-w-md text-xs text-amber-600">
-              Neste dispositivo a impressão não está disponível. Use o PC do
-              caixa (com a Epson definida como impressora padrão).
-            </p>
-          )}
-        </div>
-        {soundControls}
-      </>
-    );
-  }
-
   return (
     <>
       {Toast}
 
-      {/* Camada oculta usada apenas pelo @media print (recibo térmico 80mm). */}
       {receiptToPrint && (
         <div className="kitchen-receipt" aria-hidden="true">
           <KitchenReceipt data={receiptToPrint} />
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-500">
-        <span className="flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+      {!reception.isOpen ? (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-stone-300 bg-white py-12 text-center sm:py-16">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-coffee-100 text-coffee-700">
+            <Printer className="h-7 w-7" />
           </span>
-          {canAutoPrint
-            ? "Recepção ativa. Novos pedidos são impressos automaticamente."
-            : "Recepção ativa. Impressão indisponível neste dispositivo."}
-        </span>
-        <button
-          type="button"
-          onClick={() => setIsAutoPrintEnabled(false)}
-          className="shrink-0 rounded px-2 py-1 font-medium text-stone-500 hover:bg-stone-100"
-        >
-          Pausar
-        </button>
-      </div>
+          <div>
+            <p className="text-lg font-semibold text-stone-800">
+              Recepção encerrada
+            </p>
+            <p className="mx-auto mt-1 max-w-md text-sm text-stone-500">
+              {reception.closedReason === "SCHEDULE" || !reception.canOpen
+                ? `Horário de funcionamento: ${reception.openTime} às ${reception.closeTime}. A recepção fecha automaticamente às ${reception.closeTime}.`
+                : reception.closedReason === "MANUAL"
+                  ? "A recepção foi encerrada manualmente. Novos pedidos online de retirada ficam pausados até iniciar de novo."
+                  : "Inicie a recepção para operar a cozinha. Este clique também libera a impressão automática no navegador."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={handleEnable}
+            size="lg"
+            disabled={!reception.canOpen}
+            className="bg-coffee-600 text-base text-white hover:bg-coffee-700 disabled:opacity-60"
+          >
+            <Play className="h-5 w-5" />
+            Iniciar Recepção de Pedidos
+          </Button>
+          {!reception.canOpen && (
+            <p className="max-w-md text-xs text-amber-700">
+              Fora do horário. Abre a partir das {reception.openTime}.
+            </p>
+          )}
+          {!canAutoPrint && reception.canOpen && (
+            <p className="max-w-md text-xs text-amber-600">
+              Neste dispositivo a impressão não está disponível. Use o PC do
+              caixa (com a Epson definida como impressora padrão).
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-500 sm:flex-row sm:items-center sm:justify-between">
+          <span className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+            </span>
+            Recepção ativa. Fecha às {reception.closeTime}
+            {isAutoPrintEnabled && canAutoPrint
+              ? ". Impressão automática ligada."
+              : canAutoPrint
+                ? "."
+                : ". Impressão indisponível neste dispositivo."}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {canAutoPrint && !isAutoPrintEnabled && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setIsAutoPrintEnabled(true)}
+              >
+                Ativar impressão automática
+              </Button>
+            )}
+            <DeleteConfirmDialog
+              title="Encerrar recepção?"
+              description="Ao encerrar, a loja deixa de receber novos pedidos de retirada até você iniciar de novo. Pedidos já na fila não são cancelados."
+              confirmLabel="Encerrar recepção"
+              pendingLabel="Encerrando..."
+              triggerLabel="Encerrar recepção"
+              triggerSize="sm"
+              triggerVariant="outline"
+              triggerClassName="text-stone-600 hover:bg-stone-100"
+              showTrashIcon={false}
+              onConfirm={handleEndReception}
+            />
+          </div>
+        </div>
+      )}
 
       {soundControls}
 

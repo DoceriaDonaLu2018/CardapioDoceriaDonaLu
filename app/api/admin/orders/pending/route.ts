@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { kitchenEligibleWhere } from "@/lib/orders/kitchen";
+import { getReceptionSnapshot } from "@/lib/reception";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +29,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const kitchenWhere = kitchenEligibleWhere;
 
   try {
+    const reception = await getReceptionSnapshot();
+
     if (countOnly) {
       const [count, requiresRefundCount] = await Promise.all([
         prisma.order.count({ where: kitchenWhere }),
         prisma.order.count({ where: { status: "REQUIRES_REFUND" } }),
       ]);
-      return NextResponse.json({ count, requiresRefundCount, orders: [] });
+      return NextResponse.json({
+        count,
+        requiresRefundCount,
+        orders: [],
+        reception,
+      });
     }
 
     const [orders, requiresRefundCount] = await Promise.all([
@@ -99,6 +107,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       count: serialized.length,
       requiresRefundCount,
       orders: serialized,
+      reception,
     });
   } catch (error) {
     console.error("pending orders:", error);

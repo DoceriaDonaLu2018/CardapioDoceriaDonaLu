@@ -13,6 +13,11 @@ import {
   InsufficientStockError,
 } from "@/lib/inventory/stock";
 import { idSchema, pdvOrderSchema } from "@/lib/validation/safe-input";
+import {
+  closeReceptionManual,
+  openReception,
+  type ReceptionSnapshot,
+} from "@/lib/reception";
 
 export type OrderActionState = {
   error?: string;
@@ -560,5 +565,51 @@ export async function updateOrder(
       return { error: "O pedido mudou de status. Recarregue a página." };
     }
     return { error: "Não foi possível atualizar o pedido." };
+  }
+}
+
+export type ReceptionActionState = {
+  error?: string;
+  success?: boolean;
+  snapshot?: ReceptionSnapshot;
+};
+
+export async function startReception(): Promise<ReceptionActionState> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "Sessão expirada. Faça login novamente." };
+  }
+
+  try {
+    const result = await openReception();
+    if (!result.ok) return { error: result.error };
+    revalidatePath("/admin/pedidos");
+    revalidatePath("/checkout");
+    revalidatePath("/");
+    return { success: true, snapshot: result.snapshot };
+  } catch (error) {
+    console.error("startReception:", error);
+    return { error: "Não foi possível iniciar a recepção." };
+  }
+}
+
+export async function endReception(): Promise<ReceptionActionState> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "Sessão expirada. Faça login novamente." };
+  }
+
+  try {
+    const result = await closeReceptionManual();
+    if (!result.ok) return { error: result.error };
+    revalidatePath("/admin/pedidos");
+    revalidatePath("/checkout");
+    revalidatePath("/");
+    return { success: true, snapshot: result.snapshot };
+  } catch (error) {
+    console.error("endReception:", error);
+    return { error: "Não foi possível encerrar a recepção." };
   }
 }

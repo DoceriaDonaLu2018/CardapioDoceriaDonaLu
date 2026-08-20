@@ -3,7 +3,6 @@ import { differenceInCalendarDays } from "date-fns";
 
 import { BRASILIA_TZ } from "@/lib/timezone";
 import {
-  getStoreSettings,
   type DayOperatingHours,
   type StoreSettingsData,
 } from "@/lib/store-settings";
@@ -24,14 +23,41 @@ export type StoreStatusResult = {
   nowLabel: string;
 };
 
-function timeToMinutes(value: string): number {
+export function hoursForDay(
+  settings: StoreSettingsData,
+  weekday: number
+): DayOperatingHours {
+  const fromMap = settings.operatingHours?.[String(weekday)];
+  if (fromMap) return fromMap;
+  return {
+    closed: false,
+    open: settings.openTime,
+    close: settings.closeTime,
+  };
+}
+
+export function timeToMinutes(value: string): number {
   const [h, m] = value.split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
 }
 
-function getBrasiliaParts(now: Date) {
+/**
+ * Aberto no intervalo [open, close). Às 18:00 com fechamento 18:00 → fechada.
+ * Faixa que cruza meia-noite: [open, 24h) ∪ [0, close).
+ */
+export function isWithinHours(day: DayOperatingHours, minutesOfDay: number): boolean {
+  if (day.closed) return false;
+  const open = timeToMinutes(day.open);
+  const close = timeToMinutes(day.close);
+  if (close < open) {
+    return minutesOfDay >= open || minutesOfDay < close;
+  }
+  return minutesOfDay >= open && minutesOfDay < close;
+}
+
+export function getBrasiliaClock(now: Date = new Date()) {
   const zoned = toZonedTime(now, BRASILIA_TZ);
-  const weekday = zoned.getDay(); // 0=dom … 6=sáb
+  const weekday = zoned.getDay();
   const pad = (n: number) => String(n).padStart(2, "0");
   const dateStr = `${zoned.getFullYear()}-${pad(zoned.getMonth() + 1)}-${pad(zoned.getDate())}`;
   const timeLabel = `${pad(zoned.getHours())}:${pad(zoned.getMinutes())}`;
@@ -49,29 +75,6 @@ function weekdayFromYmd(dateStr: string): number {
   return toZonedTime(new Date(`${dateStr}T15:00:00.000Z`), BRASILIA_TZ).getDay();
 }
 
-function hoursForDay(
-  settings: StoreSettingsData,
-  weekday: number
-): DayOperatingHours {
-  const fromMap = settings.operatingHours?.[String(weekday)];
-  if (fromMap) return fromMap;
-  return {
-    closed: false,
-    open: settings.openTime,
-    close: settings.closeTime,
-  };
-}
-
-function isWithinHours(day: DayOperatingHours, minutesOfDay: number): boolean {
-  if (day.closed) return false;
-  const open = timeToMinutes(day.open);
-  const close = timeToMinutes(day.close);
-  if (close < open) {
-    return minutesOfDay >= open || minutesOfDay <= close;
-  }
-  return minutesOfDay >= open && minutesOfDay <= close;
-}
-
 export function validateScheduledOrder(
   settings: StoreSettingsData,
   deliveryDate: string,
@@ -81,7 +84,7 @@ export function validateScheduledOrder(
     return { ok: false, error: "Data da encomenda inválida." };
   }
 
-  const { dateStr: todayStr } = getBrasiliaParts(now);
+  const { dateStr: todayStr } = getBrasiliaClock(now);
   const daysAhead = differenceInCalendarDays(
     new Date(`${deliveryDate}T12:00:00.000Z`),
     new Date(`${todayStr}T12:00:00.000Z`)
@@ -125,9 +128,14 @@ export function evaluateStoreStatus(
   }
 ): StoreStatusResult {
   const now = options?.now ?? new Date();
-  const parts = getBrasiliaParts(now);
+  const parts = getBrasiliaClock(now);
   const todayHours = hoursForDay(settings, parts.weekday);
-  const isOpen = isWithinHours(todayHours, parts.minutesOfDay);
+  const hoursOpen = isWithinHours(todayHours, parts.minutesOfDay);
+  const manualCloseToday =
+    settings.receptionOpenedOnDate === parts.dateStr &&
+    settings.receptionClosedReason === "MANUAL" &&
+    !settings.receptionOpen;
+  const isOpen = hoursOpen && !manualCloseToday;
   const nowLabel = `${parts.dateStr} ${parts.timeLabel} (Brasília)`;
 
   const nextOpenTime = todayHours.closed
@@ -187,13 +195,16 @@ export function evaluateStoreStatus(
   }
 
   const reopen = nextOpenTime ?? todayHours.open ?? settings.openTime;
+  const closedMessage = manualCloseToday
+    ? "A loja está temporariamente fechada. Encomendas para outra data continuam disponíveis."
+    : `A loja está fechada no momento. Retornaremos às ${reopen}.`;
 
   return {
     kind: "closed",
     isOpen: false,
     canCheckoutPickup: false,
     canCheckoutScheduled: settings.allowedPreOrderDays.length > 0,
-    message: `A loja está fechada no momento. Retornaremos às ${reopen}.`,
+    message: closedMessage,
     nextOpenTime: reopen,
     nowLabel,
   };
@@ -204,6 +215,7 @@ export async function checkStoreStatus(options?: {
   fulfillmentMode?: "pickup" | "scheduled";
   deliveryDate?: string | null;
 }): Promise<StoreStatusResult> {
-  const settings = await getStoreSettings();
+  const { syncReceptionState } = await import("@/lib/reception");
+  const settings = await syncReceptionState(options?.now);
   return evaluateStoreStatus(settings, options);
 }

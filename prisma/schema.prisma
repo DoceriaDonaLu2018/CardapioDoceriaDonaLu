@@ -341,6 +341,12 @@ model StoreSettings {
   notificationSoundName      String?
   notificationSoundSize      Int?
   notificationSoundUpdatedAt DateTime?
+  /// Recepção (cozinha): sessão persistida — não depende da aba Pedidos.
+  receptionOpen            Boolean   @default(false)
+  /// Dia civil em Brasília (YYYY-MM-DD) em que a sessão foi aberta/encerrada.
+  receptionOpenedOnDate    String?
+  /// MANUAL | SCHEDULE — nulo se nunca encerrada neste ciclo.
+  receptionClosedReason    String?
   updatedAt           DateTime @updatedAt
   createdAt           DateTime @default(now())
 

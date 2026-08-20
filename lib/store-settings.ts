@@ -64,6 +64,9 @@ export type StoreSettingsData = {
   notificationSoundName: string | null;
   notificationSoundSize: number | null;
   notificationSoundUpdatedAt: string | null;
+  receptionOpen: boolean;
+  receptionOpenedOnDate: string | null;
+  receptionClosedReason: string | null;
 };
 
 const DEFAULTS: StoreSettingsData = {
@@ -79,6 +82,9 @@ const DEFAULTS: StoreSettingsData = {
   notificationSoundName: null,
   notificationSoundSize: null,
   notificationSoundUpdatedAt: null,
+  receptionOpen: false,
+  receptionOpenedOnDate: null,
+  receptionClosedReason: null,
 };
 
 function timeToMinutes(value: string): number {
@@ -137,6 +143,9 @@ export async function getStoreSettings(): Promise<StoreSettingsData> {
       notificationSoundUpdatedAt: row.notificationSoundUpdatedAt
         ? row.notificationSoundUpdatedAt.toISOString()
         : null,
+      receptionOpen: row.receptionOpen ?? false,
+      receptionOpenedOnDate: row.receptionOpenedOnDate ?? null,
+      receptionClosedReason: row.receptionClosedReason ?? null,
     };
   } catch (error) {
     console.error("getStoreSettings:", error);
